@@ -27,20 +27,31 @@ need_repo() {
   [ -n "$ROOT" ] || die "not inside a git repository (leo is built on git)"
 }
 
+# untracked — new files git can see, honouring .gitignore.
+untracked() { git ls-files --others --exclude-standard 2>/dev/null; }
+
 # changed <base> — every file that differs from <base>, plus untracked ones.
 changed() {
   { git diff --name-only "${1:-HEAD}" 2>/dev/null
-    git ls-files --others --exclude-standard 2>/dev/null
+    untracked
   } | sed '/^$/d' | sort -u
 }
 
+# is_text <file> — false for binaries, so build output never gets line-counted.
+# grep -I reports no match for a binary file on both GNU and BSD.
+is_text() { grep -Iq . "$1" 2>/dev/null; }
+
 # lines_changed <base> — added + removed across tracked and untracked files.
+# git reports binary diffs as "-", which the awk drops; untracked binaries are
+# dropped by is_text before they ever reach it.
 lines_changed() {
   { git diff --numstat "${1:-HEAD}" 2>/dev/null
-    git ls-files --others --exclude-standard 2>/dev/null \
-      | while IFS= read -r f; do printf '%s\t0\t%s\n' "$(wc -l <"$f" 2>/dev/null || echo 0)" "$f"; done
+    untracked | while IFS= read -r f; do
+        is_text "$f" && printf '%s\t0\t%s\n' "$(wc -l <"$f" 2>/dev/null || echo 0)" "$f"
+      done
   } | awk '$1 != "-" { n += $1 + $2 } END { print n + 0 }'
 }
+
 
 now() { date -u '+%Y-%m-%d %H:%M UTC'; }
 

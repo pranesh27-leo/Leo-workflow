@@ -17,7 +17,7 @@ while [ -L "$_self" ]; do
   _self=$(readlink "$_self")
   case "$_self" in /*) ;; *) _self="$_dir/$_self" ;; esac
 done
-LEO_HOME=$(cd -P "$(dirname "$_self")/.." && pwd)
+LEO_HOME=$(cd -P "$(dirname "$_self")" && pwd)
 export LEO_HOME
 
 . "$LEO_HOME/core/lib.sh"

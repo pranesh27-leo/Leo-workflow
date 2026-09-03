@@ -34,7 +34,7 @@ done
 [ -n "$_subject" ] || die 'usage: leo commit "<subject>"'
 
 if [ "$_check" -eq 1 ]; then
-  bash "$LEO_HOME/bin/leo" check || die "checks failed — fix them, or commit --no-check"
+  bash "$LEO_HOME/leo" check || die "checks failed — fix them, or commit --no-check"
 fi
 
 _msg=$(mktemp "${TMPDIR:-/tmp}/leo-msg.XXXXXX")

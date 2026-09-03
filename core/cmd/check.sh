@@ -72,17 +72,18 @@ else
   # A task ID that is not in the plan is an invented justification. This is the
   # one dishonest move that would otherwise sail through the whole workflow.
   _known=$(grep -o '^| *T[0-9][0-9]*' "$PLAN" 2>/dev/null | tr -d ' |' | sort -u)
-  if [ -n "$_known" ]; then
+  _used=$(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t != "" && t != "-") print t }' "$MANIFEST" | sort -u)
+  if [ -z "$_known" ]; then
+    warn "the plan declares no tasks — nothing to check hunks against"
+  elif [ -n "$_used" ]; then
     _invented=0
-    for _t in $(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t != "" && t != "-") print t }' "$MANIFEST" | sort -u); do
+    for _t in $_used; do
       printf '%s\n' "$_known" | grep -qx "$_t" || {
         err "$_t is not a task in the plan — never invent a task ID to justify a hunk"
         _invented=1; _fail=1
       }
     done
     [ "$_invented" -eq 0 ] && ok "every task ID is one the plan declared"
-  else
-    warn "the plan declares no tasks — nothing to check hunks against"
   fi
 
   if [ "$_creep" -gt 0 ]; then

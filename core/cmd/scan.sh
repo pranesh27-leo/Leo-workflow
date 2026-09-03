@@ -51,8 +51,14 @@ mkdir -p "$LEO_DIR"
     END { flush() }
   '
 
-  git ls-files --others --exclude-standard | while IFS= read -r f; do
-    printf '| NEW | `%s` | +%s |  |  |  |\n' "$f" "$(wc -l <"$f" 2>/dev/null | tr -d ' ')"
+  # A new file is one row: git has no hunks to split it by, so the reviewer
+  # reads the file. Binaries get a row too, but no line count to pretend with.
+  untracked | while IFS= read -r f; do
+    if is_text "$f"; then
+      printf '| NEW | `%s` | +%s |  |  |  |\n' "$f" "$(wc -l <"$f" 2>/dev/null | tr -d ' ')"
+    else
+      printf '| NEW | `%s` | binary |  |  |  |\n' "$f"
+    fi
   done
 
   echo

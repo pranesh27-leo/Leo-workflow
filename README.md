@@ -31,10 +31,13 @@ at 3am without an AI?**
    that exits non-zero when a known mistake reappears. It runs on every
    `leo check`, costs no tokens, and outlives the session that learned it.
 
+**New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
+complete change, with real output at every step.
+
 ## Install
 
 ```sh
-ln -s "$PWD/bin/leo" /usr/local/bin/leo
+ln -s "$PWD/leo" /usr/local/bin/leo
 cd ~/your-repo && leo init
 ```
 
@@ -68,7 +71,7 @@ change to survive across machines or be visible to teammates, drop
 ## Layout
 
 ```
-bin/leo            dispatch: a command is a file in core/cmd/, no registry
+leo                dispatch: a command is a file in core/cmd/, no registry
 core/lib.sh        every shared helper, one screen
 core/cmd/*.sh      one file per command, readable top to bottom
 templates/         what `leo init` copies into a repository
