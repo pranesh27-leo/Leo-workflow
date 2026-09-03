@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # desc: run the rules, the manifest check, the budget check and the tests
-# usage: leo check [base]
+# usage: leo check
 #
 # Four checks, in the order that catches mistakes cheapest-first. Read this file
 # top to bottom -- there is no plugin system and no hidden ordering.
 
 need_repo
 
-_base="${1:-HEAD}"
+# The base is whatever `leo scan` reviewed against, so the budget can never be
+# measured against a different starting point than the manifest was.
+_base=$(sed -n 's/^Base: *//p' "$MANIFEST" 2>/dev/null | head -1)
+_base="${_base:-HEAD}"
 _fail=0
 
 # --- 1. rules -------------------------------------------------------------

@@ -52,9 +52,10 @@ politeness — it is what makes unwanted code detectable an hour from now.
 
 ## 2. Build  — "implement T1"
 
-- Set the task's Status to `in-progress` in the plan, and to `done` when it
-  passes. That is how a multi-session change survives a lost context window:
-  the next session reads the plan and knows exactly where it is.
+- Set the task's Status to `in-progress` in the plan *before* you start, and to
+  `done` the moment it passes — not at the end of the session. The session can
+  end without warning; a status you have not written down yet is lost, and the
+  next session will either redo the task or skip it.
 - Write the test first, from the spec, and watch it fail. Then implement.
 - One task at a time. If you find work the plan does not cover, say so and ask —
   do not fold it in quietly.
@@ -95,20 +96,50 @@ Finally, name the 2–3 rows most deserving human eyes: the widest blast radius,
 anything security-relevant, and any place you made a judgement call the user has
 not seen.
 
-## 4. Land  — "check it", "commit this"
+## 4. Land  — "check it"
 
 ```sh
-leo check                       # rules, unmapped hunks, budget, tests
-leo commit "<module>: <what>"   # manifest goes into the commit message
+leo check
 ```
 
-If the budget check fails at over 2×, do not review harder — re-read the
-original request. An overshoot that large almost always means the requirement
-was misread.
+Fix what it reports. If the budget check fails at over 2x, do not review harder
+— re-read the original request. An overshoot that large almost always means the
+requirement was misread.
 
-Before you commit, add anything non-obvious you decided to the manifest, in one
-line: what you chose, what you rejected, and what you accepted as the cost. That
-sentence in the commit message is what someone debugging this in a year needs.
+Before handing over, add anything non-obvious you decided to the manifest, in
+one line: what you chose, what you rejected, and what you accepted as the cost.
+That sentence in the commit message is what someone debugging this in a year
+needs.
+
+**Do not commit.** `leo commit` is the developer's, and it refuses to run
+without a human at a terminal. When the checks pass, show them the command and
+stop:
+
+```
+Checks pass. 2 files, +47 lines, every hunk mapped to T1/T2.
+Ready when you are:
+
+    leo commit "api: limit each key to 60 req/min"
+```
+
+Then say what you would want a reviewer to look at first, and wait. Deciding the
+work is done is not your call — you are the least qualified party to make it,
+having just written the thing.
+
+## 5. Resume  — "where were we", after a disconnect
+
+Nothing about this workflow lives in the conversation, so a dropped session, a
+closed laptop or a week away costs nothing:
+
+```sh
+leo plan          # the plan, plus: "2 of 5 done | in progress: T3"
+git diff HEAD     # the code you had already written, still there
+cat .leo/manifest.md   # the review table, as far as it got
+```
+
+Read those three, then continue at the task marked `in-progress`, or the next
+`pending` one. This only works if step 2 was honest about the Status column —
+that column is the entire memory of a long change.
 
 ## Writing a rule
 

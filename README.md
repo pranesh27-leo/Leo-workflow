@@ -6,7 +6,7 @@ It exists to answer one question: **when 500 lines arrive that you did not
 type, how do you know they are the right 500 lines — and how do you debug them
 at 3am without an AI?**
 
-## The four ideas
+## The five ideas
 
 1. **The agent grills you before it plans.** It asks questions in rounds — each
    with a recommended default — and stops after each round instead of running
@@ -20,10 +20,14 @@ at 3am without an AI?**
    cannot invent a justification, and reports the unwanted work in lines:
    `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
    500 lines did I not ask for?"
-3. **The record belongs in the commit message.** Not in git notes, not in a
-   side file, not in a chat log. `git blame` → `git show` and you get the reason
-   a line exists, from git alone, forever.
-4. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
+3. **You commit, not the agent.** `leo commit` refuses to run without a human
+   at a terminal. The agent runs `leo check`, shows you the command it would
+   run, and stops — having just written the code, it is the last party that
+   should decide the code is done.
+4. **The record belongs in the commit message.** Not in git notes, not in a side
+   file, not in a chat log. `git blame` → `git show` and you get the reason a
+   line exists, from git alone, forever.
+5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
    that exits non-zero when a known mistake reappears. It runs on every
    `leo check`, costs no tokens, and outlives the session that learned it.
 
@@ -37,13 +41,29 @@ cd ~/your-repo && leo init
 ## Use
 
 ```sh
-leo plan "rate limiting"        # write down what the change may be
-                                # ...then let the agent build it
+leo plan "rate limiting"        # after the agent has grilled you
+                                # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
-                                # ...agent fills in Task / Why / If deleted
-leo check                       # rules, unmapped hunks, budget, tests
-leo commit "api: rate limit"    # manifest lands in the commit message
+                                # ...the agent fills in Task / Why / If deleted
+leo check                       # rules, unreviewed hunks, budget, tests
+leo commit "api: rate limit"    # you run this one. It refuses without a tty.
 ```
+
+## Picking up a change days later
+
+Nothing lives in the chat, so a dropped connection, a closed laptop or a week
+away costs nothing:
+
+```sh
+leo plan               # the plan, plus "2 of 5 done | in progress: T3"
+git diff HEAD          # the code you already wrote, still sitting there
+cat .leo/manifest.md   # the review table, as far as it got
+```
+
+The Status column in the plan is the whole memory of a long change. `.leo/` is
+gitignored by default, which keeps it local and disposable — if you need a
+change to survive across machines or be visible to teammates, drop
+`.leo/plan.md` from `.gitignore` and commit it.
 
 ## Layout
 

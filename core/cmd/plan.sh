@@ -19,6 +19,25 @@ done
 if [ -z "$_name" ]; then
   [ -f "$PLAN" ] || { warn "no plan yet — start one: leo plan \"<name>\""; exit 0; }
   cat "$PLAN"
+
+  # Where the work stands, so picking up a half-finished change after a day, a
+  # reboot or a lost session is one command rather than an archaeology exercise.
+  awk -F'|' '
+    /^\| *T[0-9]/ {
+      id = $2; gsub(/[ \t]/, "", id)
+      st = $6; gsub(/[ \t]/, "", st)
+      total++
+      if (st == "done") { done++ }
+      else if (st == "in-progress") { doing = doing (doing ? "," : "") id }
+      else if (next_ == "") { next_ = id }
+    }
+    END {
+      if (!total) exit
+      printf "\n%d of %d done", done + 0, total
+      if (doing != "") printf "  |  in progress: %s", doing
+      else if (next_ != "") printf "  |  next: %s", next_
+      printf "\n"
+    }' "$PLAN" >&2
   exit 0
 fi
 
