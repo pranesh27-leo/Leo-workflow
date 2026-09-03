@@ -65,6 +65,23 @@ The loop:
    you          leo commit "..."    you decide it is done. It refuses without a tty.
 ```
 
+### Two documents, one authority
+
+There are two pieces of prose in this system and they have different jobs, which
+is worth knowing before you start editing either:
+
+| | `.leo/workflow.md` | this guide |
+|---|---|---|
+| Read by | your agent, on demand | you, once |
+| Contains | obligations — what the agent must do | behaviour — what the tools actually do, with real output |
+| Lives in | your repository, yours to edit | the leo repository |
+| If they disagree | it is right | it is stale |
+
+So this page never tells you what your agent is instructed to do; it shows what
+`leo` does when the agent has followed those instructions, and what you see when
+it has not. That is the only division that survives you editing
+`.leo/workflow.md` to suit your team — which you should.
+
 ---
 
 ## 3. Install
@@ -115,8 +132,11 @@ Nothing is overwritten without `--force`. What landed:
   and test commands, and delete the placeholders you do not need.
 - **`CLAUDE.md`** — a one-line bridge (`@AGENTS.md`) so Claude Code reads the
   same file. Never keep two copies of your rules; they drift.
-- **`.leo/workflow.md`** — the loop itself, in prose, read by the agent on
-  demand rather than every session.
+- **`.leo/workflow.md`** — **the authority on what your agent must do**, read by
+  it on demand rather than every session. Anything this guide says about agent
+  behaviour is a description of that file, not a second copy of it: when the two
+  appear to disagree, `.leo/workflow.md` is right and this page is stale. Edit it
+  freely — it is yours, and the agent follows your copy, not mine.
 - **`.leo/config`** — set `TEST_CMD` here. Without it leo can check that the
   work was scoped honestly, but not that it works.
 - **`.leo/rules/`** — empty for now. Section 8.
@@ -163,11 +183,12 @@ is a fine answer:
 5. Should limits differ per endpoint? [no — one global limit for now]
 ```
 
-This step is the one people skip, and it is the one that makes everything after
-it work. **A vague plan justifies anything.** If the plan says "improve rate
-limiting", every hunk looks necessary and nothing is ever unwanted. If it says
-"in-memory token bucket, 60/min, per key, no new dependencies", then the Redis
-client the agent adds out of habit stands out immediately.
+Answering five questions is the cheapest part of this whole loop, and it decides
+how much the rest is worth. Everything downstream measures the diff against this
+plan, so the plan is the resolution limit: against "improve rate limiting" every
+hunk looks necessary, and nothing can ever come back marked unwanted. Against
+"in-memory token bucket, 60/min, per key, no new dependencies", the Redis client
+the agent adds out of habit has nowhere to hide.
 
 Answer the questions. Let it ask another round if it needs one. Then:
 
@@ -220,13 +241,13 @@ Four things earn their place here:
 
 ### Step 2 — The agent builds it
 
-Say **"implement T1"**. One task at a time, tests first. The agent updates the
-Status column as it goes: `pending` → `in-progress` → `done`.
+Say **"implement T1"**. One task at a time, tests first. The agent moves the
+Status column along: `pending` → `in-progress` → `done`.
 
-That column is the entire memory of a long change (see section 9). It has to be
-written *before* the task starts and *the moment* it passes — a session can end
-without warning, and a status that was going to be written is a status that does
-not exist.
+Nothing in leo enforces this one — it is discipline, specified in
+`.leo/workflow.md`. What you get for it is section 9: that column is the entire
+memory of a long change, and it is the difference between resuming a dropped
+session in ten seconds and reconstructing it from the diff.
 
 ### Step 3 — Split the diff into hunks
 
@@ -266,17 +287,18 @@ Seven rows. That is the whole change, and you can hold seven rows in your head.
 
 ### Step 4 — The agent fills in the three columns
 
-This is the part that cannot be automated, because it is judgement:
+This is the part that cannot be automated, because it is judgement. Three
+columns, and what you should get out of each when you read the finished table:
 
-| Column | The question it answers |
+| Column | What you learn from it |
 |---|---|
-| **Task** | which planned task does this hunk serve? `-` if none |
-| **Why** | why does *that task* require this hunk? Not what the code does |
-| **If deleted** | what concretely breaks without it? |
+| **Task** | whether anyone asked for this hunk. `-` means nobody did |
+| **Why** | whether the agent understood *why* the task needs this, or is just describing its own code back to you |
+| **If deleted** | whether the hunk is load-bearing |
 
-`If deleted` is the one that does the work. It is a necessity test: if the honest
-answer is "nothing", the hunk is not necessary, and no amount of good intentions
-changes that.
+`If deleted` is the column that does the work, because it is a necessity test
+rather than an opinion. "Nothing" is a confession, and it is one the agent is
+instructed to make rather than dress up.
 
 Here is the filled table. Note rows 4 and 5:
 
@@ -323,10 +345,11 @@ ok   python3 -m unittest -q test_app
 ok   all checks passed
 ```
 
-Checks pass, and you are still told the truth: two hunks serve no task. For each
-one the agent should recommend **revert** (the default — it is scope creep),
-**promote** (it was genuinely needed; here is the task line to add to the plan),
-or **split** (worth doing, in its own commit).
+Checks pass, and you are still told the truth: two hunks serve no task. The
+agent will arrive with a recommendation for each — `.leo/workflow.md` requires
+one — but the disposal is yours: put it back, admit it into the plan as real
+work, or let it go out as its own commit. Reverting is the right default, and
+the agent knows that, which is why anything it argues to keep is worth reading.
 
 Here the call is revert. After reverting the rename and rescanning:
 
@@ -414,12 +437,15 @@ ERR  T3 is not a task in the plan — never invent a task ID to justify a hunk
 
 This is the important one. The agent labelled its drive-by rename `T3` — a task
 that does not exist — because a filled-in row looks better than an honest `-`.
-Inventing a plausible justification is the single dishonest move that would
-otherwise pass every other check cleanly, so leo cross-references every ID
-against your plan's task table.
 
-Either the work was needed (add a real task to the plan) or it was not (mark it
-`-` and revert it).
+`leo check` collects every task ID in the plan's table and every ID used in the
+manifest, and fails on any that is not in both. It is the only check that
+catches an agent being *dishonest* rather than incomplete, and it exists because
+inventing a plausible justification is the one move that would otherwise pass
+every other check cleanly.
+
+Your call, either way: the work was needed (add a real task to the plan) or it
+was not (mark it `-` and revert).
 
 ### "est N LOC, actual M LOC (over 2x)"
 
@@ -427,10 +453,11 @@ Either the work was needed (add a real task to the plan) or it was not (mark it
 ERR  est 45 LOC, actual 190 LOC (over 2x) — re-read the request before reviewing
 ```
 
-**Do not review harder.** An overshoot this large almost always means the
-requirement was misread, not that the work was genuinely bigger. Re-read the
-original request, then re-plan. Reviewing 190 lines carefully is a worse use of
-your time than discovering you are building the wrong thing.
+This one is not about the code. An overshoot this large almost always means the
+requirement was misread, not that the work was genuinely bigger — so the useful
+next move is re-reading your original request, not the diff. Grinding carefully
+through 190 lines is a worse use of an afternoon than finding out in the first
+five minutes that you are building the wrong thing.
 
 ### A rule fired
 
@@ -501,11 +528,13 @@ and `git blame` are already in your fingers.
 
 ## 8. Writing your first rule
 
-Rules are how a lesson outlives the conversation that learned it.
+Rules are how a lesson outlives the conversation that learned it. Both you and
+your agent can write them — `.leo/workflow.md` tells the agent when to reach for
+one; this is what you need to know to read, debug and write them yourself.
 
-Every time you fix a bug that could plausibly come back, ask: **can a shell
-command detect this?** If yes, write a rule. It runs on every `leo check`, costs
-no tokens, and is still working long after everyone has forgotten the incident.
+The test for whether something should be a rule: **can a shell command detect
+it?** If yes, it runs on every `leo check` from then on, costs no tokens, and is
+still working long after everyone has forgotten the incident.
 
 A real one. The rate limiter used `time.time()` — the wall clock — which jumps
 when NTP corrects it, so a window could end early. Fixed once. To make sure it
@@ -593,10 +622,12 @@ cat .leo/manifest.md   # the review table, as far as it got
 Hand those to a fresh session — "read .leo/plan.md and continue T2" — and it
 picks up exactly where the last one stopped.
 
-**This works only if the Status column is honest.** If the agent batches its
-status updates to the end of the session, and the session ends early, the next
-one either redoes T2 or skips it. That is why `.leo/workflow.md` insists on
-writing `in-progress` before starting rather than after.
+**This works only if the Status column is honest** — which is exactly the
+discipline `.leo/workflow.md` imposes in step 2, and the reason it is worth
+imposing. An agent that batches its status updates to the end of a session it
+never reaches leaves you a plan that lies, and the next session either redoes T2
+or skips it. If you ever find yourself resuming into a wrong state, that is the
+line to check.
 
 **One limit worth knowing.** `.leo/` is gitignored by default, so this survives
 reboots and weeks away but is local to one machine. If you need a change to
@@ -629,7 +660,7 @@ measures against the same base automatically, so the two can never disagree.
 |---|---|---|
 | `AGENTS.md` | yes | standing instructions, every session, keep under 50 lines |
 | `CLAUDE.md` | yes | one-line bridge so Claude Code reads AGENTS.md |
-| `.leo/workflow.md` | yes | the loop, read on demand |
+| `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
 | `.leo/config` | yes | `TEST_CMD` |
 | `.leo/plan.md` | no | current change |

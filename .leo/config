@@ -1,0 +1,6 @@
+# leo config for leo itself.
+
+# The smoke test drives the real CLI through a real repository. It exists mostly
+# to prove `leo check` still speaks in every combination of missing plan and
+# missing manifest -- see t/smoke.sh for why that is the interesting case.
+TEST_CMD="bash t/smoke.sh"

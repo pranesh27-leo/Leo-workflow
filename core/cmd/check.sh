@@ -8,9 +8,14 @@
 need_repo
 
 # The base is whatever `leo scan` reviewed against, so the budget can never be
-# measured against a different starting point than the manifest was.
-_base=$(sed -n 's/^Base: *//p' "$MANIFEST" 2>/dev/null | head -1)
-_base="${_base:-HEAD}"
+# measured against a different starting point than the manifest was. Guard the
+# read: under `set -e` a substitution over a missing file takes the whole
+# command down, silently.
+_base=HEAD
+if [ -f "$MANIFEST" ]; then
+  _base=$(sed -n 's/^Base: *//p' "$MANIFEST" | head -1)
+  _base="${_base:-HEAD}"
+fi
 _fail=0
 
 # --- 1. rules -------------------------------------------------------------
@@ -71,7 +76,9 @@ else
 
   # A task ID that is not in the plan is an invented justification. This is the
   # one dishonest move that would otherwise sail through the whole workflow.
-  _known=$(grep -o '^| *T[0-9][0-9]*' "$PLAN" 2>/dev/null | tr -d ' |' | sort -u)
+  # `|| true` for the same reason as plan_est: no plan, or a plan with no task
+  # rows, is a state to report -- not one to die in.
+  _known=$(grep -o '^| *T[0-9][0-9]*' "$PLAN" 2>/dev/null | tr -d ' |' | sort -u || true)
   _used=$(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t != "" && t != "-") print t }' "$MANIFEST" | sort -u)
   if [ -z "$_known" ]; then
     warn "the plan declares no tasks — nothing to check hunks against"

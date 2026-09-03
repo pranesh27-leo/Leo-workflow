@@ -68,9 +68,11 @@ TEST_CMD=""
 [ -f "$LEO_DIR/config" ] && . "$LEO_DIR/config"
 
 # plan_est — the LOC estimate declared in the plan, or empty.
+# The trailing `|| true` matters: a plan with no estimate is a normal state, but
+# a failing grep inside $( ) under `set -e` would take the caller down with it.
 plan_est() {
   [ -f "$PLAN" ] || return 0
-  grep -i '^est:' "$PLAN" 2>/dev/null | grep -o '[0-9][0-9]*' | head -1
+  grep -i '^est:' "$PLAN" 2>/dev/null | grep -o '[0-9][0-9]*' | head -1 || true
 }
 
 # who — best-effort agent name for the commit trailer, so provenance is
