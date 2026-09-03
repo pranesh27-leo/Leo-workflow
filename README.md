@@ -8,13 +8,18 @@ at 3am without an AI?**
 
 ## The four ideas
 
-1. **A plan is a yardstick.** `.leo/plan.md` names the goal, the non-goals, and
-   a LOC estimate. Without something written down first, "did the agent do what
-   I asked?" has no answer.
+1. **The agent grills you before it plans.** It asks questions in rounds — each
+   with a recommended default — and stops after each round instead of running
+   ahead. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
+   tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
+   is specific enough to measure against. A vague plan justifies anything.
 2. **A manifest makes a diff reviewable.** `leo scan` turns the diff into one
    row per hunk. The agent fills in *which task this serves*, *why*, and *what
-   breaks if it is deleted*. You read ~20 rows and spot-check the risky ones. A
-   hunk that serves no task is scope creep, and it has nowhere to hide.
+   breaks if it is deleted*. You read ~20 rows and spot-check the risky ones.
+   `leo check` then rejects any task ID the plan never declared, so the agent
+   cannot invent a justification, and reports the unwanted work in lines:
+   `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
+   500 lines did I not ask for?"
 3. **The record belongs in the commit message.** Not in git notes, not in a
    side file, not in a chat log. `git blame` → `git show` and you get the reason
    a line exists, from git alone, forever.

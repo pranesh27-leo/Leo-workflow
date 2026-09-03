@@ -40,17 +40,24 @@ done
 [ "$_n" -eq 0 ] && dim "  no rules yet — write one the next time you fix a real bug"
 
 # --- 2. manifest ----------------------------------------------------------
-# Every hunk must name the task it serves. An unmapped hunk is work nobody
-# asked for.
+# Every hunk must name the task it serves, and that task must be one the plan
+# actually declared. Those two together are what turns "500 lines arrived" into
+# "these 40 lines are here because someone felt like it".
 head_ "manifest"
 if [ ! -f "$MANIFEST" ]; then
   warn "no manifest — run: leo scan"
 else
   # Blank means nobody looked at it yet: that is a failure. An explicit "-"
-  # means someone looked and owned the answer: that is scope creep, and it is
-  # a warning you have to read rather than a blocker.
+  # means someone looked and owned the answer: that is scope creep, reported in
+  # lines so the cost is visible.
   _blank=$(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t == "") n++ } END { print n + 0 }' "$MANIFEST")
   _creep=$(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t == "-") n++ } END { print n + 0 }' "$MANIFEST")
+  _creep_loc=$(awk -F'|' '
+    /^\| *[0-9NEW]/ {
+      t = $5; gsub(/[ \t]/, "", t)
+      if (t == "-" && match($4, /\+[0-9]+/)) loc += substr($4, RSTART + 1, RLENGTH - 1)
+    }
+    END { print loc + 0 }' "$MANIFEST")
 
   if [ "$_blank" -gt 0 ]; then
     err "$_blank hunk(s) not reviewed — every row needs Task, Why and If deleted"
@@ -58,7 +65,26 @@ else
   else
     ok "every hunk reviewed"
   fi
-  [ "$_creep" -gt 0 ] && warn "$_creep hunk(s) serve no task — revert, promote or split them"
+
+  # A task ID that is not in the plan is an invented justification. This is the
+  # one dishonest move that would otherwise sail through the whole workflow.
+  _known=$(grep -o '^| *T[0-9][0-9]*' "$PLAN" 2>/dev/null | tr -d ' |' | sort -u)
+  if [ -n "$_known" ]; then
+    _invented=0
+    for _t in $(awk -F'|' '/^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t != "" && t != "-") print t }' "$MANIFEST" | sort -u); do
+      printf '%s\n' "$_known" | grep -qx "$_t" || {
+        err "$_t is not a task in the plan — never invent a task ID to justify a hunk"
+        _invented=1; _fail=1
+      }
+    done
+    [ "$_invented" -eq 0 ] && ok "every task ID is one the plan declared"
+  else
+    warn "the plan declares no tasks — nothing to check hunks against"
+  fi
+
+  if [ "$_creep" -gt 0 ]; then
+    warn "$_creep hunk(s), $_creep_loc lines, serve no task — revert, promote or split"
+  fi
 fi
 
 # --- 3. budget ------------------------------------------------------------

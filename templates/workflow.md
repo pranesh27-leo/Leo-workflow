@@ -4,31 +4,51 @@ Four steps. Do the one the user asked for, and stop there.
 
 ---
 
-## 1. Plan  — "plan this", "frame this"
+## 1. Plan  — "plan this", "frame this", "grill me"
 
-Do not write code yet. Do not summarise. Ask questions.
+Do not write code. Do not summarise. Do not offer a plan yet. Ask questions.
 
-- Ask 3–10 questions, each with your recommended default, so the user can answer
-  "yes" or correct you.
-- Ask about anything that would change the design: tech choices, what already
-  exists, constraints, integration points, data model, failure modes, and — most
-  importantly — what is explicitly out of scope.
-- **Then stop and wait.** Do not continue to the plan in the same reply. Repeat
-  until the user says go ahead.
+You are the architect, and you do not share the user's head yet. Everything you
+assume instead of asking becomes a line of code nobody can defend later.
 
-Planning on assumptions is not being helpful; it is expensive.
+**The loop.** Each round:
 
-Then run `leo plan "<name>"` and fill in `.leo/plan.md`:
+1. Ask 3–10 questions. No cap — ask as many as you genuinely need.
+2. Give your recommended default with each one, so the user can answer "yes",
+   "yes", "no, X" instead of writing an essay.
+3. **End your reply there.** Do not plan, do not summarise, do not suggest next
+   steps. Wait.
+4. When the answers land, ask the next round. Stop only when you can paraphrase
+   the user's intent back and they confirm it.
+
+Ask about anything that would change the design: tech choices, what already
+exists versus what you would build, constraints, integration points, the data
+model, failure modes, and — above all — what is explicitly **out** of scope.
+If you are unsure whether a question matters, ask it.
+
+This may take three rounds or twenty. That is fine. If you feel the pull to be
+helpful by proceeding anyway, resist it: planning on assumptions is not helpful,
+it is expensive.
+
+**Then, and only then**, run `leo plan "<name>"` and fill in `.leo/plan.md`:
 
 - **Goal** — one sentence.
 - **Non-goals** — what this change must not touch.
-- **Wrong-change signal** — the one thing that would mean this is the wrong
-  change entirely.
-- **Tasks** — `T1`, `T2`, … exactly that format, with per-task file list and LOC
-  estimate. `leo` and the manifest match on `T<digit>`.
+- **Wrong-change signal** — the one observation that would mean this is the
+  wrong change entirely.
+- **Tasks** — `T1`, `T2`, … exactly that format, one row each, with the files
+  it will touch and a LOC estimate. `leo check` matches on `T<digit>`, and it
+  rejects any task ID in the manifest that is not in this table.
 - **Budget** — `est: <n> LOC`, the sum of the task estimates.
 
 Get approval before writing code.
+
+**Why this step decides whether step 3 works.** In step 3 every hunk must name
+the task it serves. That test has teeth only if the tasks are specific and the
+non-goals are real. A vague plan ("improve error handling") justifies anything,
+and nothing looks unwanted. A sharp plan makes the extra helper function you
+added out of habit stand out as exactly what it is. The grilling is not
+politeness — it is what makes unwanted code detectable an hour from now.
 
 ## 2. Build  — "implement T1"
 
