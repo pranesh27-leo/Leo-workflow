@@ -112,6 +112,14 @@ if [ "$_report" -eq 1 ]; then
   [ -n "$_miss" ] && _row "Not installed" "$_miss"
 
   _st=$(plan_status); [ -n "$_st" ] && _row "Tasks" "$_st"
+  # The to-do inside the task being worked on. The row above is the plan's
+  # view -- how many tasks -- and this one is the task file's; neither
+  # restates the other.
+  _ct=$(task_current)
+  if [ -n "$_ct" ]; then
+    _cd=$(task_todo "$_ct")
+    [ -n "$_cd" ] && _row "To-do" "$_ct  $_cd done"
+  fi
   _row "Change size" "$(changed HEAD | wc -l | tr -d ' ') file(s), $(lines_changed HEAD) lines"
 
   if [ -f "$MANIFEST" ]; then
@@ -127,6 +135,10 @@ if [ "$_report" -eq 1 ]; then
     _row "Manifest" "none — run: leo scan"
     _row "Approval" "nothing to approve yet"
   fi
+
+  # The reminder. The agent is told the loop in .leo/workflow.md; this is the
+  # same answer computed from disk, so it stays right when the chat is gone.
+  _row "Next" "$(next_step)"
 
   echo >&2
   dim "  no token figures here on purpose: the tools above measure different"
@@ -197,6 +209,10 @@ done
 
 group "code intelligence" serena graph
 group "efficiency" rtk headroom ponytail caveman
+# Its own heading. TDD does not mediate what the agent sees -- it says what
+# order the work is done in -- and filing it under efficiency would be a lie
+# about what it is.
+group "practice" tdd
 group "extensions" $_extra
 
 # Always on, in every mode, and not settable from here. That is the point of

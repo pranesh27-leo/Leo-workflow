@@ -221,6 +221,136 @@ fi
 rm -rf .leo/integrations
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
 
+printf 'TDD is a capability, not a rule\n'
+# It is available when the repository can actually run its tests. A repo with
+# no TEST_CMD cannot do test-first, and a green light there would be a lie.
+printf 'TEST_CMD="true"\n' > .leo/config
+out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
+has "$out" "TDD  *ON" "TDD is on in coding"
+has "$out" "TDD  *installed" "TEST_CMD is what installed means for TDD"
+has "$out" "practice" "TDD gets its own group, not filed under efficiency"
+out=$(NO_COLOR=1 "$LEO" session --mode review 2>&1)
+has "$out" "TDD  *OFF" "TDD is off in a mode that writes no code"
+# The ponytail bug, again: a _present that ends in a bare test against a
+# missing thing exits 2, which is leo's code for "no adapter".
+printf 'TEST_CMD=""\n' > .leo/config
+out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
+has "$out" "TDD  *MISSING" "no TEST_CMD reads as MISSING, never as no-adapter"
+printf 'TEST_CMD="true"\n' > .leo/config
+
+printf 'a task has its own file and its own to-do\n'
+printf '# Plan: x\n\n| T1 | first | f.txt | 5 | pending |\n| T2 | second | f.txt | 5 | pending |\n\nest: 20 LOC\n' > .leo/plan.md
+NO_COLOR=1 "$LEO" session --mode coding --tdd off >/dev/null 2>&1
+out=$(NO_COLOR=1 "$LEO" task T1 2>&1)
+[ -f .leo/tasks/T1.md ] && ok "leo task creates the task file" || bad "leo task creates the task file"
+out=$(cat .leo/tasks/T1.md 2>/dev/null)
+has "$out" "Done when" "the task file is a template the agent fills"
+has "$out" "To-do" "the task file carries its own to-do"
+# The duplication guard, and the one this change is most likely to violate:
+# the plan's Status column is the authority, so a task file must not have one.
+printf '%s' "$out" | grep -q '^Status' \
+  && bad "the task file does not restate Status" \
+  || ok "the task file does not restate Status"
+out=$(NO_COLOR=1 "$LEO" task 2>&1)
+has "$out" "T1" "leo task lists the tasks"
+has "$out" "0/" "leo task tracks to-do progress"
+
+printf 'the TDD capability seeds the to-do\n'
+NO_COLOR=1 "$LEO" session --mode coding --tdd on >/dev/null 2>&1
+NO_COLOR=1 "$LEO" task T2 >/dev/null 2>&1
+out=$(cat .leo/tasks/T2.md 2>/dev/null)
+has "$out" "FAIL" "with TDD on, the to-do starts with a failing test"
+NO_COLOR=1 "$LEO" session --tdd off >/dev/null 2>&1
+NO_COLOR=1 "$LEO" task T2 --force >/dev/null 2>&1
+out=$(cat .leo/tasks/T2.md 2>/dev/null)
+printf '%s' "$out" | grep -q 'watch it FAIL' \
+  && bad "with TDD off the to-do is not seeded" \
+  || ok "with TDD off the to-do is not seeded"
+# Never clobber work: the same rule leo plan already follows.
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+out=$(NO_COLOR=1 "$LEO" task T1 2>&1)
+has "$out" "Done when" "a second leo task shows the file instead of replacing it"
+
+printf 'the awkward inputs\n'
+# awk runs END on `exit`, so a rule that prints and exits mid-file prints a
+# SECOND time from END. task_current did exactly that: a pending task before an
+# in-progress one returned both ids, and the reminder then named a task file
+# whose path had a newline in it.
+printf '# Plan: x\n\n| T1 | first | f.txt | 5 | pending |\n| T2 | second | f.txt | 5 | in-progress |\n\nest: 20 LOC\n' > .leo/plan.md
+rm -f .leo/tasks/*.md
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+# The stray id lands on its own line, so counting "leo task" would miss it.
+printf '%s' "$out" | grep -qx '[ \t]*T[0-9]*' \
+  && bad "the current task is one task, not two" \
+  || ok "the current task is one task, not two"
+has "$out" "leo task T2" "the current task is the in-progress one"
+
+# gsub's replacement treats & as the matched text. A task named "a & b" came
+# out as "a <NAME> b" -- the same class of bug the code comments claim awk
+# avoids, which is why it is asserted rather than trusted.
+printf '# Plan: x\n\n| T1 | rate limit & retry | a/b.go | 5 | pending |\n\nest: 20 LOC\n' > .leo/plan.md
+rm -f .leo/tasks/T1.md
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+out=$(cat .leo/tasks/T1.md 2>/dev/null)
+has "$out" "rate limit & retry" "an ampersand in a task name survives the template"
+# The other metacharacter that bites here: a backslash in a file list.
+printf '# Plan: x\n\n| T2 | second | a\\b.go | 5 | pending |\n\nest: 20 LOC\n' > .leo/plan.md
+rm -f .leo/tasks/T2.md
+NO_COLOR=1 "$LEO" task T2 >/dev/null 2>&1
+has "$(cat .leo/tasks/T2.md 2>/dev/null)" 'a.b.go' "a backslash in a file list does not eat a character"
+
+# A task the plan does not list is created with a warning, never refused:
+# the moment leo can refuse here, the to-do is paperwork.
+rm -f .leo/tasks/T9.md
+out=$(NO_COLOR=1 "$LEO" task T9 2>&1)
+has "$out" "not in the plan" "an unplanned task warns"
+[ -f .leo/tasks/T9.md ] && ok "an unplanned task is still created" \
+                        || bad "an unplanned task is still created"
+out=$(NO_COLOR=1 "$LEO" task nonsense 2>&1) && rc=0 || rc=$?
+has "$out" "task ids are" "a malformed task id is rejected"
+[ "$rc" = 1 ] && ok "a malformed task id exits 1" || bad "a malformed id exit was $rc"
+
+# No session at all: leo task must still work, ungated, with no TDD seeding.
+NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
+rm -f .leo/tasks/T1.md
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+[ -f .leo/tasks/T1.md ] && ok "leo task works with no session" \
+                        || bad "leo task works with no session"
+rm -f .leo/tasks/T9.md .leo/tasks/T2.md
+
+printf 'a finished to-do does not skip the rest of the plan\n'
+# The gap this caught: T1's boxes all ticked but its Status still pending, and
+# the reminder jumped straight to `leo scan` -- sending the change to the
+# manifest with T2 never built at all.
+printf '# Plan: x\n\n| T1 | first | f.txt | 5 | pending |\n| T2 | second | f.txt | 5 | pending |\n\nest: 20 LOC\n' > .leo/plan.md
+rm -f .leo/tasks/*.md
+NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+sed 's/- \[ \]/- [x]/' .leo/tasks/T1.md > .leo/tasks/T1.tmp && mv .leo/tasks/T1.tmp .leo/tasks/T1.md
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+has "$out" "T1 to done" "a finished to-do asks for the plan status, not the manifest"
+printf '%s' "$out" | grep -q 'Next.*leo scan' \
+  && bad "a finished to-do does not jump to the manifest" \
+  || ok "a finished to-do does not jump to the manifest"
+# ...and once it is marked done, the next unbuilt task is what comes up.
+sed 's/| T1 | first | f.txt | 5 | pending |/| T1 | first | f.txt | 5 | done |/' .leo/plan.md > .leo/p.tmp && mv .leo/p.tmp .leo/plan.md
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+has "$out" "leo task T2" "the next unbuilt task comes up once the previous is done"
+rm -f .leo/tasks/*.md
+
+printf 'the loop names the next stage\n'
+rm -f .leo/plan.md .leo/manifest.md .leo/tasks/*.md
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+has "$out" "Next" "the report names the next stage"
+has "$out" "leo plan" "with no plan, the next stage is the plan"
+printf '# Plan: x\n\n| T1 | first | f.txt | 5 | pending |\n\nest: 20 LOC\n' > .leo/plan.md
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+has "$out" "leo task" "with a plan and no task file, the next stage is task creation"
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
+has "$out" "To-do" "the report tracks the current task's to-do"
+NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
+
 printf "commit is the human's\n"
 # In a subshell, so the assertion holds whatever the caller's environment is:
 # this test is about leo's behaviour, not about whether LEO_YES happens to be

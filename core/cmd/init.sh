@@ -6,6 +6,7 @@
 #   AGENTS.md          short, loaded every session, read by every agent
 #   CLAUDE.md          one-line bridge to AGENTS.md
 #   .leo/workflow.md   the loop the agent follows, read on demand
+#   .leo/tasks/        one file per plan task, written by `leo task`
 #   .leo/config        TEST_CMD and friends
 #   .leo/rules/        one file per lesson learned, enforced by `leo check`
 
@@ -25,7 +26,7 @@ put() { # put <template> <destination>
   fi
 }
 
-mkdir -p .leo/rules .leo/integrations
+mkdir -p .leo/rules .leo/integrations .leo/tasks
 
 put AGENTS.md      AGENTS.md
 put CLAUDE.md      CLAUDE.md
@@ -52,7 +53,7 @@ fi
 
 # The plan, the manifest and the session are working state; they end up in
 # commit messages, so they should not also be tracked as files.
-for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session"; do
+for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session" ".leo/tasks/"; do
   grep -qxF "$_ignore" .gitignore 2>/dev/null || {
     printf '%s\n' "$_ignore" >> .gitignore
     info "  update  .gitignore ($_ignore)"

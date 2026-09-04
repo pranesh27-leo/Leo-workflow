@@ -245,17 +245,69 @@ Four things earn their place here:
 - **`est: 45 LOC`** is the budget. It does not need to be accurate — it needs to
   be *written down before the code exists*, so a 3× overshoot is visible.
 
-### Step 2 — The agent builds it
+### Step 2 — The agent gives each task a file
+
+Say **"make the tasks"**. For every row of the plan's table:
+
+```sh
+leo task T1
+```
+
+That writes `.leo/tasks/T1.md` — a skeleton the agent fills in, the same way
+`leo plan` writes a plan skeleton for you to fill in:
+
+```markdown
+# T1: token bucket, per key
+
+Files: api/limit.go
+Est:   60 LOC
+
+## Done when
+`go test ./api -run TestBucket` passes, and a 61st request in a minute gets 429.
+
+## To-do
+- [ ] write the test from "Done when" above — the spec, not the implementation
+- [ ] run it, watch it FAIL, and confirm it failed for the reason you expect
+- [ ] implement the smallest thing that makes it pass
+- [ ] run it, watch it pass
+- [ ] set T1 to done in .leo/plan.md
+
+## Notes
+Rejected a sliding window: needs a second timestamp per key and the plan's
+budget does not cover the storage change.
+```
+
+That to-do is the TDD capability doing something visible — with `--tdd off` you
+get two blank placeholders and your own order instead. Section 11 covers the
+switch.
+
+**Where the statuses live.** The plan's `Status` column says whether a task is
+done. The task file says what is left *inside* it. Neither restates the other,
+and a task file with a `Status:` field is a bug — it is the copy nobody
+updates.
+
+Nothing blocks on any of this. `leo check` never reads a task file and an
+unticked box fails nothing. It is the agent's working memory, and it exists so
+that a session ending mid-task costs you nothing:
+
+```sh
+leo task
+  T1    3/5     in-progress   token bucket, per key
+  T2    0/4     pending       429 response and Retry-After
+```
+
+### Step 3 — The agent builds it
 
 Say **"implement T1"**. One task at a time, tests first. The agent moves the
-Status column along: `pending` → `in-progress` → `done`.
+Status column along: `pending` → `in-progress` → `done`, and ticks the boxes in
+the task file as it goes.
 
 Nothing in leo enforces this one — it is discipline, specified in
 `.leo/workflow.md`. What you get for it is section 9: that column is the entire
 memory of a long change, and it is the difference between resuming a dropped
 session in ten seconds and reconstructing it from the diff.
 
-### Step 3 — Split the diff into hunks
+### Step 4 — Split the diff into hunks
 
 ```sh
 leo scan
@@ -291,7 +343,7 @@ Tests: <command> -- <paste the real output>
 
 Seven rows. That is the whole change, and you can hold seven rows in your head.
 
-### Step 4 — The agent fills in the three columns
+### Step 5 — The agent fills in the three columns
 
 This is the part that cannot be automated, because it is judgement. Three
 columns, and what you should get out of each when you read the finished table:
@@ -324,7 +376,7 @@ The agent renamed `payload` to `encoded_payload` in a method nobody asked it to
 touch. Harmless, plausible, and completely unrequested — the exact thing that is
 invisible in a 500-line diff and obvious in a table.
 
-### Step 5 — Check
+### Step 6 — Check
 
 ```sh
 leo check
@@ -383,7 +435,7 @@ Five rows, all of them accounted for.
 > test result nobody observed. If the agent left a placeholder there and no test
 > command is configured, check fails.
 
-### Step 6 — You commit
+### Step 7 — You commit
 
 The agent stops here. It shows you the command and waits:
 
@@ -659,6 +711,8 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo session --clear` | you | ends it |
 | `leo plan "<name>"` | you, per change | writes the plan skeleton |
 | `leo plan` | either | shows the plan and where it stands |
+| `leo task T1` | agent | gives one plan task its own file and to-do, or shows it |
+| `leo task` | either | every task, its to-do progress and its plan status |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
 | `leo check` | agent | rules, unreviewed hunks, invented IDs, budget, tests |
 | `leo commit "<subject>"` | **you only** | commits with the manifest in the message |
@@ -679,6 +733,7 @@ measures against the same base automatically, so the two can never disagree.
 | `.leo/config` | yes | `TEST_CMD` |
 | `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
+| `.leo/tasks/*.md` | no | one per task: "Done when", a to-do, notes |
 | `.leo/manifest.md` | no | current review table |
 
 ### Config
@@ -757,17 +812,29 @@ warn 3 enabled capability(s) not installed — leo works without them
 
 | Mode | For | What it changes |
 |---|---|---|
-| `coding` | building a planned change | everything on, including the reducers |
-| `debugging` | finding out why something is wrong | semantic reducers off |
-| `learning` | understanding code you did not write | reducers off, code graph on |
-| `review` | reading a change someone else made | reducers on, minimisation off |
-| `exploration` | surveying unfamiliar ground | reducers off, code graph on |
+| `coding` | building a planned change | everything on, including the reducers and TDD |
+| `debugging` | finding out why something is wrong | semantic reducers off, TDD on |
+| `learning` | understanding code you did not write | reducers off, code graph on, TDD off |
+| `review` | reading a change someone else made | reducers on, minimisation off, TDD off |
+| `exploration` | surveying unfamiliar ground | reducers off, code graph on, TDD off |
 
 The line that runs through all five: **structural filtering stays on, semantic
 filtering comes off when detail is the point.** Dropping progress bars and
 deduplicating repeated log lines is safe in any mode. A model deciding which
 lines mattered is not, because during debugging the thing that matters is
 routinely the thing that looks like noise.
+
+**TDD is the odd one out**, and deliberately so. It is not a tool mediating
+what the agent sees — it says what order the work is done in, so it gets its
+own `practice` heading. It is ON in `coding` and `debugging` (a bug reproduced
+by a failing test first is the same discipline) and OFF in the three modes that
+write no code. "Installed" means this repo has a `TEST_CMD` in `.leo/config`,
+because without one there is nothing to watch fail.
+
+What it switches is the **order**, and only the order. With `--tdd off` you may
+write the test afterwards — you may not skip it. `leo check` runs `TEST_CMD`
+and records the result in the manifest either way, and no mode can turn that
+off. It is an engineering control, and those are not on this list.
 
 Override any one of them, and the override is marked as yours:
 
@@ -781,7 +848,7 @@ compressor still on.
 
 ### The tools it can name
 
-Six capabilities, five of them with an adapter. An adapter is a file in
+Seven capabilities, each with an adapter. An adapter is a file in
 `core/integrations/` that answers three questions and does nothing else:
 
 ```sh

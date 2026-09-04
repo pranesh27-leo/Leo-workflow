@@ -7,6 +7,7 @@ cat >&2 <<EOF
 leo $(cat "$LEO_HOME/VERSION") — keep AI-written code reviewable.
 
   You    grill the agent, then    leo plan "rate limiting"
+  Agent  leo task T1              each task gets a file and a to-do
   Agent  builds it one task at a time, updating Status as it goes
   Agent  leo scan                 500 lines -> ~20 rows, one per hunk
   Agent  leo check                rules, scope, budget, tests -- then STOPS
@@ -25,6 +26,10 @@ COMMANDS
                           command first. Refuses without a human at a terminal.
                           Nothing else in leo installs anything.
   plan ["<name>"]         start a change, or show it and where it stands
+  task [T1] [--force]     give a plan task its own file and to-do, or list
+                          them all with their progress. Nothing blocks on it:
+                          it is the agent's working memory between the plan
+                          and the manifest.
   scan [base]             enumerate hunks into .leo/manifest.md
   check                   rules + unreviewed hunks + invented task IDs
                           + budget + tests
@@ -41,11 +46,14 @@ FILES
   .leo/config             TEST_CMD
   .leo/session            current mode (gitignored — it lands in the commit)
   .leo/plan.md            current change (gitignored — it lands in the commit)
+  .leo/tasks/*.md         one per task: "Done when", a to-do, notes (same)
   .leo/manifest.md        current review table (same)
 
 AFTER A DISCONNECT
   Nothing lives in the chat, so a dropped session costs nothing:
+    leo session --report  the whole change on one screen, and what is next
     leo plan              the plan, plus "2 of 5 done | in progress: T3"
+    leo task              every task and how far its to-do got
     git diff HEAD         the code, still there
     cat .leo/manifest.md  the review table, as far as it got
 

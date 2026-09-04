@@ -4,7 +4,24 @@
 explanation — if you want the reasoning, the worked examples and the sample
 output, that is the human's guide, and it does not overrule anything here.
 
-Five steps. Do the one you were asked for, and stop there.
+Six stages. Do the one you were asked for, and stop there.
+
+```
+grill me  ->  plan  ->  task creation  ->  build  ->  manifest  ->  commit
+              leo plan   leo task T1      write it   leo scan      leo check
+                                                     leo check     leo commit  <- theirs
+```
+
+**Know where you are, and say so.** Before doing what you were asked, work out
+which stage this change is in. `leo session --report` computes it and prints it
+as `Next:` — it reads the plan, the task files, the manifest and git, so it is
+still right after a disconnect. Name the stage in your first line.
+
+**Name a stage that is being skipped.** If you are asked for something two
+stages ahead — code with no plan, a commit with no manifest — say which stage
+is being skipped and the command for it, then wait. Do not silently proceed and
+do not do the missing stage quietly in passing. The developer may well have a
+reason; it is theirs to give, not yours to assume.
 
 **First, check the session.** If `leo session` reports a mode, honour it. In
 `debugging`, `learning` and `exploration` the developer has asked for detail:
@@ -63,16 +80,45 @@ look unwanted.
 
 Get approval before writing code.
 
-## 2. Build — "implement T1"
+## 2. Tasks — "make the tasks", "start T1"
+
+Every row of the plan's table gets its own file:
+
+```sh
+leo task T1       # creates .leo/tasks/T1.md, or shows it if it exists
+leo task          # every task, its to-do and its plan status
+```
+
+Fill in **Done when** first — an observable condition, something you can run —
+because the to-do falls out of it. Then write the to-do: the steps you will
+actually take, small enough that ticking one is honest.
+
+Tick boxes as you go, not at the end. The plan's `Status` column says whether
+the task is done; the task file says what is left inside it. Never put a status
+in the task file — two copies drift, and the one you did not update is the one
+somebody reads.
+
+Nothing blocks on these. `leo check` does not read them and an unticked box
+fails nothing: this is your working memory, and it exists so that a session
+ending mid-task costs nothing.
+
+## 3. Build — "implement T1"
 
 - Set the task's Status to `in-progress` *before* you start and `done` the
   moment it passes — never batched at the end. A session can end without
   warning, and a status you have not written down is lost.
-- Write the test first, from the spec, and watch it fail. Then implement.
+- **If `leo session` reports TDD as ON**, work test-first: write the test from
+  the task's "Done when", run it, watch it **fail**, and confirm it failed for
+  the reason you expect — a test that passes before you write anything is
+  testing nothing. Then the smallest implementation that passes it. `leo task`
+  seeds the to-do with those steps while TDD is on.
+- If TDD is OFF the developer has chosen their own order. Tests are still not
+  optional: `leo check` runs `TEST_CMD` and records the result either way, and
+  no mode can switch that off.
 - One task at a time. If you find work the plan does not cover, say so and ask.
   Do not fold it in quietly.
 
-## 3. Review — "scan this", "produce the manifest"
+## 4. Review — "scan this", "produce the manifest"
 
 ```sh
 leo scan          # writes .leo/manifest.md, one row per hunk
@@ -102,7 +148,7 @@ Then:
 - Name the 2–3 rows most deserving human eyes: widest blast radius, anything
   security-relevant, and any judgement call the user has not seen.
 
-## 4. Land — "check it"
+## 5. Land — "check it"
 
 ```sh
 leo check
@@ -131,16 +177,18 @@ Then say what you would want a reviewer to look at first, and wait. Deciding the
 work is done is not your call — you are the least qualified party to make it,
 having just written the thing.
 
-## 5. Resume — "where were we"
+## 6. Resume — "where were we"
 
 ```sh
-leo session            # the mode, if the developer set one
+leo session --report   # the whole change on one screen, including Next:
 leo plan               # the plan, plus "2 of 5 done | in progress: T3"
+leo task               # every task and how far its to-do got
 git diff HEAD          # the code already written
 cat .leo/manifest.md   # the review table, as far as it got
 ```
 
-Continue at the task marked `in-progress`, or the next `pending` one.
+Continue at the task marked `in-progress`, or the next `pending` one, at the
+first unticked box in its to-do.
 
 ## Writing a rule
 

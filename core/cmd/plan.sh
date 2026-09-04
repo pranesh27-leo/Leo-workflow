@@ -56,6 +56,8 @@ Created: $(now)
 Status: pending -> in-progress -> done.
 Task IDs must be T1, T2, ... — leo and the manifest match on that format.
 
+Then give each row its own file and to-do: \`leo task T1\`.
+
 ## Budget
 est: <n> LOC
 PLANEOF

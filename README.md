@@ -13,6 +13,9 @@ at 3am without an AI?**
    ahead. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
    tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
    is specific enough to measure against. A vague plan justifies anything.
+   Then `leo task T1` gives each of those numbered tasks its own file: what
+   *done* looks like, a to-do the agent ticks as it goes, and the decisions the
+   code cannot record. A session that ends mid-task costs nothing.
 2. **A manifest makes a diff reviewable.** `leo scan` turns the diff into one
    row per hunk. The agent fills in *which task this serves*, *why*, and *what
    breaks if it is deleted*. You read ~20 rows and spot-check the risky ones.
@@ -58,6 +61,7 @@ cd ~/your-repo && leo init
 leo session --mode coding       # optional: what kind of work this is
 leo install --all               # optional: get what that mode declares
 leo plan "rate limiting"        # after the agent has grilled you
+leo task T1                     # each task gets a file and a to-do
                                 # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
                                 # ...the agent fills in Task / Why / If deleted

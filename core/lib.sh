@@ -106,10 +106,150 @@ plan_status() {
     }' "$PLAN"
 }
 
+# ------------------------------------------------------------- tasks ----
+# A task file is .leo/tasks/T1.md: what is left inside one plan row. The plan
+# stays the authority for whether a task is done, and these helpers read it
+# rather than storing a second copy -- the duplication this whole stage is most
+# likely to grow by accident.
+#
+# Every one of them guards its read. A substitution over a missing file under
+# `set -e` with `pipefail` takes the caller down after the value was already
+# computed, which is the failure lines_changed above documents at length.
+TASKS="$LEO_DIR/tasks"
+
+task_file() { printf '%s/%s.md' "$TASKS" "$1"; }
+
+# plan_tasks — every task id the plan declares, in order.
+plan_tasks() {
+  [ -f "$PLAN" ] || return 0
+  awk -F'|' '/^\| *T[0-9]/ { id = $2; gsub(/[ \t]/, "", id); print id }' "$PLAN"
+}
+
+plan_has_task() {
+  plan_tasks | grep -qx "$1"
+}
+
+# _plan_field <id> <column> — one cell of a task's row. The column numbers are
+# the plan template's: 2 id, 3 name, 4 files, 5 est, 6 status.
+_plan_field() {
+  [ -f "$PLAN" ] || return 0
+  awk -F'|' -v want="$1" -v col="$2" '
+    /^\| *T[0-9]/ {
+      id = $2; gsub(/[ \t]/, "", id)
+      if (id == want) {
+        v = $col
+        gsub(/^[ \t]+|[ \t]+$/, "", v)
+        print v
+        exit
+      }
+    }' "$PLAN"
+}
+
+plan_task_name()   { _plan_field "$1" 3; }
+plan_task_files()  { _plan_field "$1" 4; }
+plan_task_est()    { _plan_field "$1" 5; }
+plan_task_status() { _plan_field "$1" 6; }
+
+# task_todo <id> — "3/5", or empty when there is no task file. Counts the
+# checkboxes and nothing else, so a to-do written in prose reports nothing
+# rather than a wrong number.
+task_todo() {
+  _tf=$(task_file "$1")
+  [ -f "$_tf" ] || return 0
+  awk '
+    /^- \[[xX]\]/  { d++ }
+    /^- \[[ xX]\]/ { t++ }
+    END { if (t) printf "%d/%d", d + 0, t }' "$_tf"
+}
+
+# task_current — the task the work is on: the in-progress one, else the first
+# that is not done. Empty when the plan declares none.
+# awk runs END on `exit`, so "print and exit" prints a second time from END.
+# That is why this sets a variable and prints once, in END, instead: a pending
+# task ahead of an in-progress one used to return both ids, and next_step then
+# built a task-file path with a newline in the middle of it.
+task_current() {
+  [ -f "$PLAN" ] || return 0
+  awk -F'|' '
+    /^\| *T[0-9]/ {
+      id = $2; gsub(/[ \t]/, "", id)
+      st = $6; gsub(/[ \t]/, "", st)
+      if (st == "in-progress" && doing == "") doing = id
+      if (st != "done" && first == "") first = id
+    }
+    END { if (doing != "") print doing; else if (first != "") print first }' "$PLAN"
+}
+
 # plan_name — the change this plan is for, from its title line.
 plan_name() {
   [ -f "$PLAN" ] || return 0
   sed -n 's/^# Plan: *//p' "$PLAN" | head -1
+}
+
+# next_step — which of the six stages this change is in, as the command that
+# advances it. Derived from the plan, the task files, the manifest and git, all
+# of which are already on disk: nothing is stored to make this printable, and
+# no command refuses to run because of what this returns. It is a reminder, not
+# a gate.
+#
+# grill me -> plan -> task creation -> build -> manifest -> commit suggestion
+next_step() {
+  [ -f "$PLAN" ] || {
+    printf 'grill the developer, then: leo plan "<name>"'
+    return 0
+  }
+
+  _t=$(task_current)
+  if [ -n "$_t" ]; then
+    _tf=$(task_file "$_t")
+    if [ ! -f "$_tf" ]; then
+      printf 'leo task %s' "$_t"
+      return 0
+    fi
+    _td=$(task_todo "$_t")
+    case "$_td" in
+      "") ;;
+      *)  _d=${_td%%/*}; _n=${_td##*/}
+          if [ "$_d" -lt "$_n" ]; then
+            printf 'build %s — next: %s' "$_t" "$(task_next_item "$_t")"
+            return 0
+          fi
+          # Every box ticked but the plan still says otherwise. Without this
+          # the reminder jumped to `leo scan` and the remaining tasks were
+          # never built -- the status is what moves the work to the next task.
+          if [ "$(plan_task_status "$_t")" != "done" ]; then
+            printf 'set %s to done in .leo/plan.md' "$_t"
+            return 0
+          fi ;;
+    esac
+  fi
+
+  [ -f "$MANIFEST" ] || { printf 'leo scan'; return 0; }
+
+  # A blank Task cell is a hunk nobody has accounted for yet, which is the
+  # manifest stage rather than the check stage.
+  _blank=$(awk -F'|' '
+    /^\| *[0-9NEW]/ { t = $5; gsub(/[ \t]/, "", t); if (t == "") n++ }
+    END { print n + 0 }' "$MANIFEST")
+  [ "$_blank" -gt 0 ] && {
+    printf 'fill the manifest — %s hunk(s) name no task' "$_blank"
+    return 0
+  }
+
+  printf 'leo check, then leo commit "<subject>" — the commit is yours'
+}
+
+# task_next_item <id> — the first unticked line of a task's to-do, trimmed, so
+# the reminder can name the actual next thing rather than "keep going".
+task_next_item() {
+  _tf=$(task_file "$1")
+  [ -f "$_tf" ] || return 0
+  awk '
+    /^- \[ \]/ {
+      sub(/^- \[ \][ \t]*/, "")
+      print
+      exit
+    }' "$_tf"
 }
 
 # who — best-effort agent name for the commit trailer, so provenance is
@@ -140,7 +280,7 @@ SESSION="$LEO_DIR/session"
 
 # The capabilities leo ships with, in display order. Extensions are appended to
 # this by cap_discover below; nothing here is positional any more.
-BUILTIN_CAPS="serena graph rtk headroom ponytail caveman"
+BUILTIN_CAPS="serena graph rtk headroom ponytail caveman tdd"
 
 MODE=""
 # shellcheck disable=SC1090
@@ -162,11 +302,11 @@ MODE=""
 # repeated lines) rather than a model deciding what you needed to see.
 mode_policy() {
   case "$1" in
-    coding)      echo "serena=on graph=off rtk=on headroom=on  ponytail=on  caveman=off" ;;
-    debugging)   echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
-    learning)    echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
-    review)      echo "serena=on graph=on  rtk=on headroom=on  ponytail=off caveman=off" ;;
-    exploration) echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
+    coding)      echo "serena=on graph=off rtk=on headroom=on  ponytail=on  caveman=off tdd=on"  ;;
+    debugging)   echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off tdd=on"  ;;
+    learning)    echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off tdd=off" ;;
+    review)      echo "serena=on graph=on  rtk=on headroom=on  ponytail=off caveman=off tdd=off" ;;
+    exploration) echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off tdd=off" ;;
   esac
 }
 
