@@ -13,6 +13,12 @@ something they may need to read line by line. The mode is theirs — never chang
 it, and if the work has clearly turned into something else, say so and let them
 switch it.
 
+**Never install anything.** If `leo session` reports a tool as MISSING, say so
+and show the developer `leo install <name>`. Do not run it, do not run the
+underlying installer yourself, and do not work around a missing tool by
+installing something else. What goes on their machine is their decision, the
+same as committing is.
+
 No mode ever relaxes what follows. Plan, task IDs, manifest, rules, tests and
 human commit apply in every mode, and nothing you are told to be brief about
 includes them.

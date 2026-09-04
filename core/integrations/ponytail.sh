@@ -27,3 +27,11 @@ ponytail_advice() {
   say "the plan outranks it: a task that asks for an abstraction gets the abstraction"
   say "an honest '-' row in the manifest is still the stronger check"
 }
+
+# The ruleset form, appended to AGENTS.md -- the one that works with every
+# agent rather than only the ones with a plugin system. It is about 2.5KB, and
+# AGENTS.md loads on every request, so this is a real cost and not a free one.
+ponytail_install() {
+  say "printf '\\n' >> AGENTS.md"
+  say "curl -fsSL https://raw.githubusercontent.com/DietrichGebert/ponytail/main/AGENTS.md >> AGENTS.md"
+}

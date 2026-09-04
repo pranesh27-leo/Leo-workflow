@@ -19,6 +19,11 @@ understand a year later. No prior knowledge assumed.
 
 ---
 
+> Everything in this guide is described against a small example. For the same
+> workflow run end to end against a real upstream project — a real defect in
+> `pallets/click`, checked against its own 1990-test suite, including the three
+> times leo rejected the change before it landed — see **[DEMO.md](DEMO.md)**.
+
 ## 1. The problem
 
 You ask an AI for a feature. Ninety seconds later you have 500 lines across six
@@ -648,6 +653,9 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo session` | you | shows the mode and what it declares |
 | `leo session --mode <name>` | you | sets it: coding, debugging, learning, review, exploration |
 | `leo session --report` | either | where this change stands, end to end |
+| `leo install` | you | what is installed and what is not |
+| `leo install <name>` | **you only** | installs one. Shows the command, asks first. |
+| `leo install --all` | **you only** | installs everything this session declares |
 | `leo session --clear` | you | ends it |
 | `leo plan "<name>"` | you, per change | writes the plan skeleton |
 | `leo plan` | either | shows the plan and where it stands |
@@ -667,6 +675,7 @@ measures against the same base automatically, so the two can never disagree.
 | `CLAUDE.md` | yes | one-line bridge so Claude Code reads AGENTS.md |
 | `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
+| `.leo/integrations/*.sh` | yes | tools your repo adds, one file each |
 | `.leo/config` | yes | `TEST_CMD` |
 | `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
@@ -712,7 +721,7 @@ leo session
 
 code intelligence
   Serena        ON
-  Code graph    ON    no adapter — upstream is noncommercial-only
+  Code graph    ON
 
 efficiency
   RTK           ON
@@ -732,12 +741,14 @@ dependencies
   Serena        MISSING
       uv tool install -p 3.13 serena-agent
       claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
-  Code graph    no adapter
+  Code graph    MISSING
+      curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
+      the installer registers the MCP server with Claude Code itself
   RTK           MISSING
       brew install rtk
       rtk init -g             installs the auto-rewrite hook
 
-warn 2 enabled capability(s) not installed — leo works without them
+warn 3 enabled capability(s) not installed — leo works without them
   install one above, or drop it here: leo session --<name> off
   leo does not install these. Declaring one does not switch anything on.
 ```
@@ -790,7 +801,7 @@ and `.leo/rules/ADAPTER-CONTRACT.md` checks that a new one is reachable.
 | Headroom | context compression, semantic | Apache-2.0, `headroomlabs-ai/headroom` |
 | Ponytail | write less code | MIT, `DietrichGebert/ponytail` |
 | Caveman | write less prose | MIT skill, BSL-1.1 engine, `JuliusBrussee/caveman` |
-| Code graph | call chains, blast radius | **no adapter** — see below |
+| Code graph | call chains, blast radius | MIT, `DeusData/codebase-memory-mcp` |
 
 Three things the dependencies block will tell you that are worth knowing before
 you install anything:
@@ -810,14 +821,95 @@ you install anything:
   the second pass buys little on that buffer. `leo session` prints a
   **conflicts** block whenever both are declared — whether or not either is
   installed, because that is a property of the policy, not of your machine.
-- **The code graph has no adapter on purpose.** GitNexus is the best of them and
-  is PolyForm Noncommercial: most people reading this write code at work. leo
-  will name the capability and tell you it cannot help, rather than ship a
-  default most of its users may not legally run.
+- **The code graph is the one that took a second try.** GitNexus is the
+  best-known tool here and is PolyForm Noncommercial — most people reading this
+  write code at work, and leo will not default its users into a licence they
+  cannot use. `codebase-memory-mcp` is MIT, a single static binary with no
+  runtime of its own, and its `detect_changes` maps a git diff to the symbols it
+  affects — which is the same question `leo scan` asks of a diff from the other
+  end. A licence is a technical constraint here, not a footnote.
 
 If a tool is not installed, leo says so and carries on. Nothing here can fail a
 check, and `leo check` on a machine with none of them installed behaves exactly
 as it does today — there is a test for that too.
+
+### Installing them
+
+```sh
+leo install              # what is installed, and what is not
+leo install serena       # one
+leo install --all        # everything this session declares
+```
+
+```
+install serena
+  leo will run this. It is not leo's code, and leo has not audited it:
+
+      uv tool install -p 3.13 serena-agent
+      claude mcp add serena -- serena start-mcp-server --context claude-code --project '/home/you/repo'
+
+run it? [y/N]
+```
+
+Three properties, and they are the reason this is a separate command rather
+than something `leo session` does for you:
+
+- **It shows you the command before it runs it.** Almost everything here is
+  somebody else's installer, fetched over the network, and leo has not read it.
+  You approve the actual string, chosen for your machine — `leo install rtk`
+  prints `brew install rtk` if you have Homebrew and the `curl | sh` line if
+  you do not, rather than offering you a menu of what might happen.
+- **It refuses without a human at a terminal**, exactly as `leo commit` does.
+  An agent that hits this gets told to show you the command and stop. Deciding
+  what goes on your machine is not its call.
+- **Nothing else in leo installs anything.** `leo session` declares,
+  `leo scan` enumerates, `leo check` verifies, and all three work on a machine
+  with none of these tools present. There is a test asserting that none of them
+  ever emits an install command. That is what makes an optional dependency
+  actually optional, and confining it to one command is how it stays true.
+
+`leo install --all` only installs what the current session declares. A tool the
+mode turns off does not get installed, because the mode already decided that.
+
+### Teaching leo a tool it does not know
+
+Six capabilities ship with leo. Yours will not be one of them.
+
+Drop a `<name>.sh` into `.leo/integrations/`. leo sources every `*.sh` there,
+the file name becomes the capability, and `leo session --<name> on` and
+`leo install <name>` start working. No registry, no manifest file, no
+`leo plugin add`. `.leo/integrations/README.md` — installed by `leo init` —
+holds the full template.
+
+```sh
+# .leo/integrations/vitals.sh
+vitals_present() { command -v vitals >/dev/null 2>&1; }          # required
+vitals_hint()    { say "npx --yes skills add chopratejas/vitals"; }  # required
+vitals_install() { say "npx --yes skills add chopratejas/vitals"; }  # optional
+vitals_default() { case "$1" in review|debugging) printf 'on' ;; *) printf 'off' ;; esac; }
+vitals_advice()  { say "rank hotspots by ROI before picking what to fix"; }
+vitals_label()   { printf 'Vitals'; }
+```
+
+```
+extensions
+  Vitals        ON
+```
+
+Two things worth knowing:
+
+- **An adapter must define functions and nothing else.** leo sources it on
+  every command, so anything it does at the top level, it does on every
+  `leo check`. leo parses each repository adapter before loading it and skips
+  one that does not compile — a broken adapter prints a warning and changes
+  nothing else, and there is a test that says so. That guard is the line
+  between an extension point and a plugin framework, and if it ever stops
+  holding, this feature should come back out.
+- **`.leo/integrations/` is committed.** A capability your team depends on
+  arrives with the repository, not in somebody's setup notes. It is also
+  repository code that leo runs, the same as `.leo/config` and the `## Verify`
+  block in every rule — read an unfamiliar repo's `.leo/` before running leo in
+  it, the same as you would read its Makefile.
 
 ### The report
 

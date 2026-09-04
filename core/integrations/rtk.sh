@@ -23,3 +23,15 @@ rtk_advice() {
   say "  exclude_commands = [\"leo\"]"
   say "on macOS: ~/Library/Application Support/rtk/config.toml"
 }
+
+# Homebrew when it is here, the upstream script when it is not. Chosen at print
+# time so the developer approves the command that will actually run, not a
+# menu of the ones that might.
+rtk_install() {
+  if command -v brew >/dev/null 2>&1; then
+    say "brew install rtk"
+  else
+    say "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
+  fi
+  say "rtk init -g"
+}

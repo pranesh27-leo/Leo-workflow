@@ -40,6 +40,11 @@ at 3am without an AI?**
 **New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
 complete change, with real output at every step.
 
+**Want to see it work first? [Read the demo](DEMO.md)** — one recorded session
+against `pallets/click`, fixing a real defect in it, checked against click's
+own 1990-test suite. Including the three times leo rejected the change before
+it landed.
+
 ## Install
 
 ```sh
@@ -51,6 +56,7 @@ cd ~/your-repo && leo init
 
 ```sh
 leo session --mode coding       # optional: what kind of work this is
+leo install --all               # optional: get what that mode declares
 leo plan "rate limiting"        # after the agent has grilled you
                                 # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
@@ -81,7 +87,7 @@ change to survive across machines or be visible to teammates, drop
 leo                dispatch: a command is a file in core/cmd/, no registry
 core/lib.sh        every shared helper, one screen
 core/cmd/*.sh      one file per command, readable top to bottom
-core/integrations/ one file per external tool: detect, hint, advise
+core/integrations/ the tools leo ships with: detect, hint, install, advise
 templates/         what `leo init` copies into a repository
 ```
 
@@ -91,10 +97,12 @@ There are exactly three extension points, and none requires touching the code:
 
 - **A new check** is a new file in `.leo/rules/`.
 - **A new command** is a new file in `core/cmd/`. `leo <name>` finds it.
-- **A new tool leo can name** is a new file in `core/integrations/` defining
-  three functions: is it installed, how do you install it, what should the agent
-  do with it. An adapter never installs or launches anything — leo has no
-  runtime dependency on any tool it can name, and that is not negotiable.
+- **A new tool** is a new file in `.leo/integrations/`, committed with your
+  repo, defining two required functions — is it installed, how do you install
+  it — and up to four optional ones. `leo session --<name> on` and
+  `leo install <name>` then work for it. leo parses an adapter before it loads
+  it and skips one that does not compile, because nothing a repository adds may
+  be able to break `leo check`.
 
 If a change needs more machinery than that, it probably does not belong here.
 Every abstraction in this tool has to earn itself against a simple rule: you

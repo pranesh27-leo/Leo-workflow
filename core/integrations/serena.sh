@@ -21,3 +21,14 @@ serena_advice() {
   esac
   say "find_symbol and find_referencing_symbols before grep; they answer what grep cannot"
 }
+
+# What `leo install serena` will run. It prints; leo shows it, asks, then runs
+# it. The MCP registration is only emitted when the claude CLI is actually
+# here, because a line that cannot work should not be in a script someone is
+# being asked to approve.
+serena_install() {
+  say "uv tool install -p 3.13 serena-agent"
+  if command -v claude >/dev/null 2>&1; then
+    say "claude mcp add serena -- serena start-mcp-server --context claude-code --project '${ROOT:-.}'"
+  fi
+}

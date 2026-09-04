@@ -138,32 +138,39 @@ who() {
 # key here that could turn one off.
 SESSION="$LEO_DIR/session"
 
-# The capabilities leo knows how to declare, in display order. The order is the
-# contract: mode_policy returns one value per name, positionally.
-CAPS="serena graph rtk headroom ponytail caveman"
+# The capabilities leo ships with, in display order. Extensions are appended to
+# this by cap_discover below; nothing here is positional any more.
+BUILTIN_CAPS="serena graph rtk headroom ponytail caveman"
 
 MODE=""
-SERENA=""; GRAPH=""; RTK=""; HEADROOM=""; PONYTAIL=""; CAVEMAN=""
 # shellcheck disable=SC1090
 [ -f "$SESSION" ] && . "$SESSION"
 
-# mode_policy <mode> — the default state of every capability, in CAPS order.
-# Empty for a mode leo does not know, which is how the caller validates one.
+# mode_policy <mode> — the built-in default for each capability, as name=state
+# pairs. Empty for a mode leo does not know, which is how the caller validates
+# one. A capability missing from a row falls through to its adapter's own
+# <cap>_default, and then to off.
+#
+# Named rather than positional. The first version returned bare on/off values
+# lined up with the CAPS string, which meant reordering one line silently
+# remapped every mode -- and it could not express a capability leo had never
+# heard of, which is exactly what an extension is.
 #
 # Debugging, learning and exploration turn the semantic reducers off: during
 # those, the thing that matters is often the thing that looks like noise. RTK
 # stays on throughout because its filtering is structural (progress bars,
 # repeated lines) rather than a model deciding what you needed to see.
 mode_policy() {
-  #     serena graph rtk headroom ponytail caveman
   case "$1" in
-    coding)      echo "on  off  on  on   on   off" ;;
-    debugging)   echo "on  on   on  off  off  off" ;;
-    learning)    echo "on  on   on  off  off  off" ;;
-    review)      echo "on  on   on  on   off  off" ;;
-    exploration) echo "on  on   on  off  off  off" ;;
+    coding)      echo "serena=on graph=off rtk=on headroom=on  ponytail=on  caveman=off" ;;
+    debugging)   echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
+    learning)    echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
+    review)      echo "serena=on graph=on  rtk=on headroom=on  ponytail=off caveman=off" ;;
+    exploration) echo "serena=on graph=on  rtk=on headroom=off ponytail=off caveman=off" ;;
   esac
 }
+
+MODES="coding debugging learning review exploration"
 
 # cap_over <cap> — the explicit override for a capability, or empty. An
 # override is stored uppercased, so `--caveman on` is CAVEMAN=on in the file.
@@ -174,16 +181,21 @@ cap_over() {
 
 # cap_state <cap> — what it is actually set to: the override if there is one,
 # otherwise the mode's default. Empty when there is no session at all.
+# cap_state <cap> — what it is actually set to. In order: an explicit override,
+# the mode's built-in default, the adapter's own default, then off. Empty when
+# there is no session at all.
 cap_state() {
   [ -n "$MODE" ] || return 0
   _o=$(cap_over "$1")
   [ -n "$_o" ] && { printf '%s' "$_o"; return 0; }
-  _i=1
-  for _c in $CAPS; do
-    [ "$_c" = "$1" ] && break
-    _i=$((_i + 1))
+  for _p in $(mode_policy "$MODE"); do
+    case "$_p" in "$1"=*) printf '%s' "${_p#*=}"; return 0 ;; esac
   done
-  mode_policy "$MODE" | awk -v i="$_i" '{ printf "%s", $i }'
+  if command -v "${1}_default" >/dev/null 2>&1; then
+    printf '%s' "$("${1}_default" "$MODE")"
+    return 0
+  fi
+  printf 'off'
 }
 
 # session_desc — "debugging (caveman=on)" for the commit trailer, or empty.
@@ -211,9 +223,54 @@ session_desc() {
 # runtime dependency on any tool it can name, and adding one here must not
 # create one. If an adapter ever needs to write outside .leo/, it is the wrong
 # shape and belongs in the developer's own setup.
-for _adapter in "$LEO_HOME/core/integrations"/*.sh; do
-  # shellcheck disable=SC1090
-  [ -f "$_adapter" ] && . "$_adapter"
+# Two directories, in this order: leo's own, then the repository's. A repo
+# adapter with the same name as a built-in is sourced second and wins, so a
+# team whose environment needs a different install command does not have to
+# fork leo to get one.
+#
+# `.leo/integrations/` is repository code that leo sources, exactly as
+# `.leo/config` already is and `.leo/rules/*.md` already are. Read an unfamiliar
+# repository's `.leo/` before running leo in it, the same as you would its
+# Makefile.
+ADAPTER_DIRS="$LEO_HOME/core/integrations${ROOT:+ $ROOT/.leo/integrations}"
+
+for _dir in $ADAPTER_DIRS; do
+  for _adapter in "$_dir"/*.sh; do
+    [ -f "$_adapter" ] || continue
+    # A repository adapter is somebody else's file, and leo sources it on every
+    # single command. One unbalanced quote in it would take down `leo check`
+    # along with everything else -- so it is parsed first and skipped if it does
+    # not compile. leo's own adapters skip the check: they are covered by
+    # ADAPTER-CONTRACT and the smoke test, and this runs on every invocation.
+    # Match the directory exactly, not a "$LEO_HOME"/* prefix: when leo is
+    # installed in the repository it is being run from -- which is how leo is
+    # developed -- every repo adapter matches that prefix and skips the check.
+    case "$_dir" in
+      "$LEO_HOME/core/integrations") ;;
+      *) bash -n "$_adapter" 2>/dev/null || {
+           printf 'warn %s does not parse — skipped\n' "$_adapter" >&2
+           continue
+         } ;;
+    esac
+    # shellcheck disable=SC1090
+    . "$_adapter"
+  done
+done
+
+# CAPS — the built-ins in display order, then whatever the repository added,
+# in the order the shell globs them. Discovered from files rather than from a
+# list, so adding a capability is dropping in a file: same as a command, same
+# as a rule.
+CAPS="$BUILTIN_CAPS"
+for _dir in $ADAPTER_DIRS; do
+  for _adapter in "$_dir"/*.sh; do
+    [ -f "$_adapter" ] || continue
+    _n=$(basename "$_adapter" .sh)
+    # Only if it actually loaded. A file that was skipped above must not become
+    # a capability, or leo names something it has no functions for.
+    command -v "${_n}_present" >/dev/null 2>&1 || continue
+    printf '%s\n' $CAPS | grep -qx "$_n" || CAPS="$CAPS $_n"
+  done
 done
 
 # cap_present <cap> — 0 installed, 1 missing, 2 leo has no adapter for it.

@@ -21,3 +21,9 @@ headroom_advice() {
     say "  and leaves it there until unwrapped. Do not configure Serena twice."
   fi
 }
+
+# Heavier than the rest: a Python toolchain, ONNX Runtime, and a model
+# downloaded on first use. Worth saying before someone types y.
+headroom_install() {
+  say "uv tool install --python 3.13 'headroom-ai[all]'"
+}

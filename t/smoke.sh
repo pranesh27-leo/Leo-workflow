@@ -128,7 +128,7 @@ printf 'adapters detect, and never gate\n'
 out=$(NO_COLOR=1 "$LEO" session --mode debugging 2>&1)
 has "$out" "Serena  *MISSING" "an enabled tool that is absent reads as MISSING"
 has "$out" "uv tool install" "a missing tool comes with the install line"
-has "$out" "Code graph  *no adapter" "a capability leo cannot detect says so, not MISSING"
+has "$out" "Code graph  *MISSING" "the code graph reads as installable, not unsupported"
 
 # Bug that shipped once: cap_present returning non-zero in statement position
 # killed the whole block under `set -e`, so dependencies printed a header and
@@ -160,6 +160,65 @@ printf '%s' "$out" | grep -Eqi '[0-9]+ *%|tokens? saved|savings|reduction' \
 out=$(PATH="/usr/bin:/bin" NO_COLOR=1 "$LEO" check 2>&1); rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] && ok "check runs with no integration on PATH" \
                               || bad "check runs with no integration on PATH (rc=$rc)"
+NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
+
+printf 'install is a command, never a side effect\n'
+out=$(NO_COLOR=1 "$LEO" install 2>&1)
+has "$out" "serena  *missing" "install lists a tool it knows how to install"
+has "$out" "graph  *missing" "the code graph has an adapter now"
+
+out=$(unset LEO_YES; NO_COLOR=1 "$LEO" install serena </dev/null 2>&1); rc=$?
+has "$out" "needs a human at a terminal" "install refuses without a tty"
+[ "$rc" = 2 ] && ok "install exits 2 when refused" || bad "install exit was $rc, wanted 2"
+
+# The property the whole design rests on: nothing except `leo install` may
+# touch the machine, and it cannot run unattended.
+for c in session scan check; do
+  out=$(unset LEO_YES; NO_COLOR=1 "$LEO" $c </dev/null 2>&1 || true)
+  printf '%s' "$out" | grep -qiE 'installing|brew install|uv tool install|curl -fsSL.*\| *(sh|bash)$' \
+    && bad "leo $c never installs anything" || ok "leo $c never installs anything"
+done
+
+printf 'a repository can add a tool leo has never heard of\n'
+mkdir -p .leo/integrations
+cat > .leo/integrations/zzdemo.sh <<'ADAPTER'
+zzdemo_present() { command -v zzdemo-not-real >/dev/null 2>&1; }
+zzdemo_label()   { printf 'ZZ Demo'; }
+zzdemo_hint()    { say "not a real tool"; }
+zzdemo_default() { case "$1" in review) printf 'on' ;; *) printf 'off' ;; esac; }
+ADAPTER
+out=$(NO_COLOR=1 "$LEO" session --mode review 2>&1)
+has "$out" "extensions" "an extension gets its own heading"
+has "$out" "ZZ Demo  *ON" "the adapter's own label and per-mode default are used"
+out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
+has "$out" "ZZ Demo  *OFF" "a mode the adapter does not name defaults it off"
+out=$(NO_COLOR=1 "$LEO" session --zzdemo on 2>&1)
+has "$out" "ZZ Demo  *ON  *(you)" "an extension can be overridden like a built-in"
+
+# The wrong-change signal from the plan, stated as a test: a broken adapter in
+# a repository must not be able to break leo. If this ever fails, extensions
+# have become a plugin framework and should be taken back out.
+a=$(NO_COLOR=1 "$LEO" check 2>&1); arc=$?
+printf 'zzbroken_present() { unbalanced "\n' > .leo/integrations/zzbroken.sh
+out=$(NO_COLOR=1 "$LEO" session 2>&1)
+has "$out" "does not parse" "a broken adapter is reported"
+printf '%s' "$out" | grep -q 'zzbroken' && ok "a broken adapter is named" || bad "a broken adapter is named"
+
+# Not "check still exits 0" -- "check does exactly what it did before". The
+# adapter is a repository file leo sources on every command, so the property
+# worth asserting is that it changes nothing at all.
+b=$(NO_COLOR=1 "$LEO" check 2>&1); brc=$?
+# Drop the adapter warning and the budget line: the adapter file is a real new
+# file in the repository, so it legitimately moves the line count. Everything
+# else -- rules, manifest, tests, verdict -- must be identical.
+a=$(printf '%s\n' "$a" | grep -v 'actual')
+b=$(printf '%s\n' "$b" | grep -v 'does not parse' | grep -v 'actual')
+if [ "$arc" = "$brc" ] && [ "$a" = "$b" ]; then
+  ok "a broken adapter changes nothing about check"
+else
+  bad "a broken adapter changes nothing about check (rc $arc vs $brc)"
+fi
+rm -rf .leo/integrations
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
 
 printf "commit is the human's\n"

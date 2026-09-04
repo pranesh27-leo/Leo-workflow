@@ -19,8 +19,10 @@
 need_repo
 
 _mode=""; _clear=0; _set=0; _report=0
-_new_serena=""; _new_graph=""; _new_rtk=""
-_new_headroom=""; _new_ponytail=""; _new_caveman=""
+# One per capability, discovered rather than listed: an extension in
+# .leo/integrations/ is a capability leo has never heard of, and a hardcoded
+# set of these is an unbound variable the first time somebody adds one.
+for _c in $CAPS; do eval "_new_$_c=''"; done
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -143,10 +145,12 @@ fi
 # or from you, and whether leo can do anything about it yet. A capability leo
 # cannot act on says so rather than looking enabled.
 label() {
+  command -v "${1}_label" >/dev/null 2>&1 && { "${1}_label"; return 0; }
   case "$1" in
-    serena)   printf 'Serena' ;;      graph)    printf 'Code graph' ;;
-    rtk)      printf 'RTK' ;;         headroom) printf 'Headroom' ;;
-    ponytail) printf 'Ponytail' ;;    caveman)  printf 'Caveman' ;;
+    serena)   printf 'Serena' ;;      rtk)      printf 'RTK' ;;
+    headroom) printf 'Headroom' ;;    ponytail) printf 'Ponytail' ;;
+    caveman)  printf 'Caveman' ;;
+    *)        printf '%s' "$1" ;;
   esac
 }
 
@@ -167,9 +171,11 @@ note() {
 head_ "leo session"
 info "  Mode: $MODE"
 
-for _group in "code intelligence:serena graph" "efficiency:rtk headroom ponytail caveman"; do
-  head_ "${_group%%:*}"
-  for _c in ${_group#*:}; do
+group() {   # group <title> <cap>...
+  _title="$1"; shift
+  [ $# -gt 0 ] || return 0
+  head_ "$_title"
+  for _c in "$@"; do
     _s=$(cap_state "$_c" | tr 'a-z' 'A-Z')
     _by=""; [ -n "$(cap_over "$_c")" ] && _by="  (you)"
     _nt=$(note "$_c"); [ -n "$_nt" ] && _nt="  $C_DIM$_nt$C_OFF"
@@ -179,7 +185,19 @@ for _group in "code intelligence:serena graph" "efficiency:rtk headroom ponytail
       printf '  %-13s %s\n' "$(label "$_c")" "$_s" >&2
     fi
   done
+}
+
+# Anything CAPS gained that leo does not ship with came from
+# .leo/integrations/, and gets its own heading rather than being filed under
+# one of leo's two.
+_extra=""
+for _c in $CAPS; do
+  printf '%s\n' $BUILTIN_CAPS | grep -qx "$_c" || _extra="$_extra $_c"
 done
+
+group "code intelligence" serena graph
+group "efficiency" rtk headroom ponytail caveman
+group "extensions" $_extra
 
 # Always on, in every mode, and not settable from here. That is the point of
 # the tool: the capabilities above change what the agent sees, and none of them

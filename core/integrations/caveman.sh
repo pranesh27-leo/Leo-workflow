@@ -19,3 +19,9 @@ caveman_advice() {
   say "brevity never applies to the manifest: Why and If deleted are the record"
   say "or to a rule violation, a failing test, or an error message"
 }
+
+# The MIT skill only. The proxy is the BSL-1.1 half, it runs a daemon, and it
+# adds input tokens of its own -- leo will not install that for you.
+caveman_install() {
+  say "npx --yes skills add JuliusBrussee/caveman"
+}

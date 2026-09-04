@@ -25,12 +25,16 @@ put() { # put <template> <destination>
   fi
 }
 
-mkdir -p .leo/rules
+mkdir -p .leo/rules .leo/integrations
 
-put AGENTS.md   AGENTS.md
-put CLAUDE.md   CLAUDE.md
-put workflow.md .leo/workflow.md
-put rule.md     .leo/rules/EXAMPLE.md
+put AGENTS.md      AGENTS.md
+put CLAUDE.md      CLAUDE.md
+put workflow.md    .leo/workflow.md
+put rule.md        .leo/rules/EXAMPLE.md
+# A README rather than a sample adapter: leo sources every *.sh in that
+# directory, so a template that shipped as one would load itself and show up
+# as a capability nobody asked for.
+put integration.md .leo/integrations/README.md
 
 if [ ! -f .leo/config ] || [ "$_force" -eq 1 ]; then
   cat > .leo/config <<'CONF'

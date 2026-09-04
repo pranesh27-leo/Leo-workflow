@@ -21,6 +21,9 @@ COMMANDS
                           commit message.
   session --report        where this change stands: plan, mode, size,
                           manifest, tests, approval
+  install [<name>|--all]  install a tool this session declares. Shows the
+                          command first. Refuses without a human at a terminal.
+                          Nothing else in leo installs anything.
   plan ["<name>"]         start a change, or show it and where it stands
   scan [base]             enumerate hunks into .leo/manifest.md
   check                   rules + unreviewed hunks + invented task IDs
@@ -33,8 +36,8 @@ FILES
   AGENTS.md               agent instructions, loaded every session (keep it short)
   .leo/workflow.md        the loop, read on demand
   .leo/rules/*.md         one lesson per file, each with a shell check
-  core/integrations/*.sh  one file per external tool: detect, hint, advise.
-                          leo installs none of them and needs none of them.
+  core/integrations/*.sh  the tools leo ships with: detect, hint, install, advise
+  .leo/integrations/*.sh  the tools your repo adds. Same contract, no registry.
   .leo/config             TEST_CMD
   .leo/session            current mode (gitignored — it lands in the commit)
   .leo/plan.md            current change (gitignored — it lands in the commit)
