@@ -38,7 +38,10 @@ at 3am without an AI?**
    compressor may each have had a turn first, and the diff records none of it.
    `leo session --mode debugging` declares which of them this kind of work
    wants, and the answer lands in the commit message next to `Assisted-by:`.
-   leo installs none of them, and none of them can turn a check off.
+   leo installs none of them, and none of them can turn a check off. Each one
+   also ships an instruction file — `.leo/tools/<name>.md` — that the agent
+   reads only when the session has that tool on, so what a tool needs and how
+   it actually fails is written down once instead of rediscovered.
 
 **New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
 complete change, with real output at every step.

@@ -730,6 +730,7 @@ measures against the same base automatically, so the two can never disagree.
 | `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
 | `.leo/integrations/*.sh` | yes | tools your repo adds, one file each |
+| `.leo/tools/*.md` | yes | one per capability: how to use it, what it needs |
 | `.leo/config` | yes | `TEST_CMD` |
 | `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
@@ -771,6 +772,7 @@ leo session --mode debugging
 ```
 
 ```
+
 leo session
   Mode: debugging
 
@@ -784,6 +786,9 @@ efficiency
   Ponytail      OFF
   Caveman       OFF
 
+practice
+  TDD           ON
+
 engineering controls
   Plan          ON   always
   Task IDs      ON   always
@@ -794,16 +799,23 @@ engineering controls
 
 dependencies
   Serena        MISSING
+      instructions: .leo/tools/serena.md
       uv tool install -p 3.13 serena-agent
       claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
   Code graph    MISSING
+      instructions: .leo/tools/graph.md
       curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
       the installer registers the MCP server with Claude Code itself
   RTK           MISSING
-      brew install rtk
+      instructions: .leo/tools/rtk.md
+      brew install rtk        (or: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh)
       rtk init -g             installs the auto-rewrite hook
+  TDD           MISSING
+      instructions: .leo/tools/tdd.md
+      set TEST_CMD in .leo/config — that is the whole install
+        TEST_CMD="go test ./..."   TEST_CMD="npm test"   TEST_CMD="pytest -q"
 
-warn 3 enabled capability(s) not installed — leo works without them
+warn 4 enabled capability(s) not installed — leo works without them
   install one above, or drop it here: leo session --<name> off
   leo does not install these. Declaring one does not switch anything on.
 ```
@@ -899,6 +911,56 @@ you install anything:
 If a tool is not installed, leo says so and carries on. Nothing here can fail a
 check, and `leo check` on a machine with none of them installed behaves exactly
 as it does today — there is a test for that too.
+
+### The instruction files
+
+Every capability leo ships with installs one file into your repository:
+
+```
+.leo/tools/serena.md    graph.md    rtk.md    headroom.md
+           ponytail.md  caveman.md  tdd.md
+```
+
+`leo session` prints the path beside each capability that is ON — whether it is
+installed (you are about to use it) or MISSING (you need to know what it wants
+before you install it). `.leo/workflow.md` tells the agent to read that file
+before using the tool, and to use nothing that is not both ON and installed.
+
+They are **copies**, installed by `leo init` like `.leo/workflow.md` is, so your
+team can amend them. `leo init --force` restores leo's version.
+
+Two of them carry a standing order rather than advice. The code graph is
+**CLI only** — its MCP wire returns `Cannot read properties of undefined` on
+every call, and the CLI returns the same data, so an agent that only knows the
+MCP names concludes the tool is dead. Caveman is **skill only** — leo uses the
+MIT skill and never the cloud gateway, so there is no account, no
+`CAVE_API_KEY`, and nothing to configure.
+
+**Each fact lives in exactly one file.** The prerequisites, the failure
+signatures and the things not to do are in `.leo/tools/<name>.md` and nowhere
+else; the adapter carries the install command and one line at the terminal, and
+this guide carries the index below and no facts at all. `.leo/rules/TOOL-DOC.md`
+enforces the first half of that, and `t/smoke.sh` asserts the second.
+
+### When a tool misbehaves
+
+Symptoms that look like a broken tool and are not. Each one is answered in
+full in the file named — this table deliberately restates none of it:
+
+| What you see | Read |
+|---|---|
+| `Cannot read properties of undefined (reading 'properties')` | `.leo/tools/graph.md` |
+| `passing raw JSON is deprecated`, and flags do not work | `.leo/tools/graph.md` |
+| Caveman stays MISSING after a successful install | `.leo/tools/caveman.md` |
+| `npx caveman` cannot determine an executable | `.leo/tools/caveman.md` |
+| a skill asks you for a gateway URL or an API key | `.leo/tools/caveman.md` |
+| `Unknown language 'javascript'` | `.leo/tools/serena.md` |
+| `health-check` says a language server is not installed | `.leo/tools/serena.md` |
+| `serena project health-check` rejects `--project` | `.leo/tools/serena.md` |
+| `tree command not found` from `rtk tree` | `.leo/tools/rtk.md` |
+| `leo check` output looks truncated | `.leo/tools/rtk.md` |
+| Serena configured twice, at user scope | `.leo/tools/headroom.md` |
+| TDD reads MISSING and you cannot see why | `.leo/tools/tdd.md` |
 
 ### Installing them
 

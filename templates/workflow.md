@@ -30,6 +30,15 @@ something they may need to read line by line. The mode is theirs — never chang
 it, and if the work has clearly turned into something else, say so and let them
 switch it.
 
+**Use only what the session enables.** `leo session` lists every capability as
+ON or OFF, and as installed or MISSING. A tool is yours to use only when it is
+**ON and installed** — both. For each one that is, read `.leo/tools/<name>.md`
+before you use it and follow what it says; those files carry the prerequisites
+and failure modes that cost somebody a session to find, and two of them carry a
+standing order rather than advice. A capability that is OFF is not a
+suggestion: do not use it, do not work around it, and do not turn it on. The
+mode is the developer's.
+
 **Never install anything.** If `leo session` reports a tool as MISSING, say so
 and show the developer `leo install <name>`. Do not run it, do not run the
 underlying installer yourself, and do not work around a missing tool by

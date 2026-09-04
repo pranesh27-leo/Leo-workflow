@@ -18,10 +18,7 @@ rtk_hint() {
 # result it just observed into the manifest, so a truncated run becomes a
 # recorded claim about tests that nobody actually read.
 rtk_advice() {
-  say "exclude leo from the rewrite, in ~/.config/rtk/config.toml"
-  say "  [hooks]"
-  say "  exclude_commands = [\"leo\"]"
-  say "on macOS: ~/Library/Application Support/rtk/config.toml"
+  say "exclude leo from the hook rewrite — the config block is in the doc above"
 }
 
 # Homebrew when it is here, the upstream script when it is not. Chosen at print

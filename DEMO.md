@@ -72,6 +72,9 @@ efficiency
   Ponytail      OFF
   Caveman       OFF
 
+practice
+  TDD           ON
+
 engineering controls
   Plan          ON   always
   Task IDs      ON   always
@@ -82,21 +85,30 @@ engineering controls
 
 dependencies
   Serena        MISSING
+      instructions: .leo/tools/serena.md
       uv tool install -p 3.13 serena-agent
       claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
   Code graph    MISSING
+      instructions: .leo/tools/graph.md
       curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
       the installer registers the MCP server with Claude Code itself
   RTK           MISSING
+      instructions: .leo/tools/rtk.md
       brew install rtk        (or: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh)
       rtk init -g             installs the auto-rewrite hook
+  TDD           installed
+      instructions: .leo/tools/tdd.md
+      red before green: the test fails first, for the reason you expect
+      leo task seeds the to-do with those steps while this is on
 
 warn 3 enabled capability(s) not installed — leo works without them
   install one above, or drop it here: leo session --<name> off
   leo does not install these. Declaring one does not switch anything on.
 ```
 
-Serena and the code graph are on: understanding is the bottleneck here.
+Serena and the code graph are on: understanding is the bottleneck here. TDD is
+on as well, and click has a `TEST_CMD`, so it reads as installed — the fix gets
+written as a failing test first.
 Headroom, Ponytail and Caveman are off — those compress, shorten and minimise,
 and this is the mode where none of that is wanted.
 
@@ -119,6 +131,7 @@ leo install
   headroom      missing     OFF
   ponytail      missing     OFF
   caveman       missing     OFF
+  tdd           installed   ON
 
   leo install <name>     install one
   leo install --all      install everything this session declares
@@ -194,6 +207,9 @@ efficiency
   Ponytail      OFF
   Caveman       OFF
 
+practice
+  TDD           ON
+
 extensions
   Vitals        ON
 
@@ -207,14 +223,21 @@ engineering controls
 
 dependencies
   Serena        MISSING
+      instructions: .leo/tools/serena.md
       uv tool install -p 3.13 serena-agent
       claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
   Code graph    MISSING
+      instructions: .leo/tools/graph.md
       curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
       the installer registers the MCP server with Claude Code itself
   RTK           MISSING
+      instructions: .leo/tools/rtk.md
       brew install rtk        (or: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh)
       rtk init -g             installs the auto-rewrite hook
+  TDD           installed
+      instructions: .leo/tools/tdd.md
+      red before green: the test fails first, for the reason you expect
+      leo task seeds the to-do with those steps while this is on
   Vitals        MISSING
       npx --yes skills add chopratejas/vitals
 
@@ -226,6 +249,12 @@ warn 4 enabled capability(s) not installed — leo works without them
 No registry, no `leo plugin add`. It picked up its own label and its own
 per-mode default, `leo install vitals` works, and because the file is committed
 the capability arrives with a `git clone` rather than in somebody's setup notes.
+
+Note what Vitals does *not* have: an `instructions:` line. Every capability leo
+ships with installs a `.leo/tools/<name>.md`, and `leo session` points at it. An
+extension can ship one too — drop `.leo/tools/vitals.md` in beside the adapter —
+but until it does, leo prints nothing rather than a path to a file that is not
+there.
 
 ---
 

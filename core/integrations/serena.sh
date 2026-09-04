@@ -19,7 +19,7 @@ serena_advice() {
     coding|debugging) say "serena --mode editing — symbol lookup and symbolic edits" ;;
     *)                say "serena --mode planning — read and analyse, do not edit" ;;
   esac
-  say "find_symbol and find_referencing_symbols before grep; they answer what grep cannot"
+  say "find_symbol and find_referencing_symbols before grep"
 }
 
 # What `leo install serena` will run. It prints; leo shows it, asks, then runs

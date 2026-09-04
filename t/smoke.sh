@@ -8,7 +8,8 @@
 # success to a script and exactly like a hang to a person.
 
 set -u
-LEO=$(cd -P "$(dirname "$0")/.." && pwd)/leo
+LEOHOME=$(cd -P "$(dirname "$0")/.." && pwd)
+LEO="$LEOHOME/leo"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/leo-smoke.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
@@ -350,6 +351,82 @@ NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
 out=$(NO_COLOR=1 "$LEO" session --report 2>&1)
 has "$out" "To-do" "the report tracks the current task's to-do"
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
+
+printf 'every capability ships one instruction file\n'
+# The mechanism: init installs a doc per capability, and `leo session` points
+# at it. The docs are where a tool's prerequisites and failure modes live --
+# one home each, which is the property this whole change exists to protect.
+_missing_doc=""
+for c in serena graph rtk headroom ponytail caveman tdd; do
+  [ -f ".leo/tools/$c.md" ] || _missing_doc="$_missing_doc $c"
+done
+[ -z "$_missing_doc" ] && ok "init installs a doc for every built-in capability" \
+                       || bad "init installs a doc for every capability (missing:$_missing_doc)"
+out=$(NO_COLOR=1 "$LEO" session --mode debugging 2>&1)
+has "$out" "instructions: .leo/tools/serena.md" "an enabled MISSING tool points at its doc"
+printf 'TEST_CMD="true"\n' > .leo/config
+out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
+has "$out" "instructions: .leo/tools/tdd.md" "an enabled installed tool points at its doc"
+# An extension with no doc must print nothing, not a path to a missing file.
+mkdir -p .leo/integrations
+printf 'zzdemo_present() { return 1; }\nzzdemo_hint() { say "x"; }\nzzdemo_default() { printf on; }\n' > .leo/integrations/zzdemo.sh
+out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
+printf '%s' "$out" | grep -q 'tools/zzdemo.md' \
+  && bad "a capability with no doc points at nothing" \
+  || ok "a capability with no doc points at nothing"
+rm -rf .leo/integrations
+
+printf 'the workflow gates tool use on the session\n'
+has "$(cat .leo/workflow.md)" "ON .*and installed" "the workflow says a tool must be ON and installed"
+has "$(cat .leo/workflow.md)" ".leo/tools/" "the workflow sends the agent to the per-tool doc"
+
+printf 'caveman is skill only\n'
+# Verified by running the installer: npx skills add writes into the REPO at
+# .agents/skills/caveman* with .claude/skills symlinks. `command -v caveman`
+# could never have found it, which is why the capability read MISSING forever.
+NO_COLOR=1 "$LEO" session --mode coding --caveman on >/dev/null 2>&1
+out=$(NO_COLOR=1 "$LEO" session 2>&1)
+has "$out" "Caveman  *MISSING" "with no skill installed, caveman is MISSING not no-adapter"
+mkdir -p .agents/skills/caveman
+out=$(NO_COLOR=1 "$LEO" session 2>&1)
+has "$out" "Caveman  *installed" "the skill directory is what installed means for caveman"
+rm -rf .agents
+mkdir -p .claude/skills/caveman
+out=$(NO_COLOR=1 "$LEO" session 2>&1)
+has "$out" "Caveman  *installed" "the claude-scope symlink counts too"
+rm -rf .claude
+NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
+
+printf 'the code graph is called through its CLI\n'
+printf '#!/bin/sh\n' > "$TMP/bin/codebase-memory-mcp" && chmod +x "$TMP/bin/codebase-memory-mcp"
+out=$(PATH="$TMP/bin:$PATH" NO_COLOR=1 "$LEO" session --mode debugging 2>&1)
+has "$out" "cli" "an installed code graph is told to use the CLI"
+has "$out" "instructions: .leo/tools/graph.md" "and pointed at the standing order"
+
+printf 'a prerequisite lives in exactly one place\n'
+# The plan's wrong-change signal, as a test. Seven docs, seven adapters, a
+# GUIDE and a README are four plausible homes for "rtk tree needs tree(1)",
+# and leo has already been burned once by two documents written to overlap.
+# The doc is the sole home; everything else points at it.
+_dupes=""
+for probe in "tree(1)" "gopls" "exclude_commands"; do
+  n=$(grep -rl -- "$probe" "$LEOHOME/templates" "$LEOHOME/core" "$LEOHOME/GUIDE.md" "$LEOHOME/README.md" 2>/dev/null | grep -c .)
+  [ "$n" -le 1 ] || _dupes="$_dupes $probe:$n"
+done
+[ -z "$_dupes" ] && ok "each prerequisite is stated in exactly one file" \
+                 || bad "each prerequisite is stated in one file (dupes:$_dupes)"
+# The gateway leo decided against must not appear in anything leo RUNS or
+# tells the agent to do. templates/tools/caveman.md names it on purpose --
+# to forbid it -- so the assertion is scoped to code and to the workflow.
+if grep -rq 'CAVE_API_KEY\|CAVE_GATEWAY\|caveman wrap' \
+     "$LEOHOME/core" "$LEOHOME/templates/workflow.md" 2>/dev/null; then
+  bad "leo's code never reaches for the caveman gateway"
+else
+  ok "leo's code never reaches for the caveman gateway"
+fi
+# ...and the doc forbids it rather than merely omitting it.
+has "$(cat "$LEOHOME/templates/tools/caveman.md")" "no .CAVE_API_KEY" \
+  "the caveman doc rules the gateway out explicitly"
 
 printf "commit is the human's\n"
 # In a subshell, so the assertion holds whatever the caller's environment is:

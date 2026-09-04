@@ -7,6 +7,7 @@
 #   CLAUDE.md          one-line bridge to AGENTS.md
 #   .leo/workflow.md   the loop the agent follows, read on demand
 #   .leo/tasks/        one file per plan task, written by `leo task`
+#   .leo/tools/        one per capability: how to use it, what it needs
 #   .leo/config        TEST_CMD and friends
 #   .leo/rules/        one file per lesson learned, enforced by `leo check`
 
@@ -26,7 +27,7 @@ put() { # put <template> <destination>
   fi
 }
 
-mkdir -p .leo/rules .leo/integrations .leo/tasks
+mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools
 
 put AGENTS.md      AGENTS.md
 put CLAUDE.md      CLAUDE.md
@@ -36,6 +37,15 @@ put rule.md        .leo/rules/EXAMPLE.md
 # directory, so a template that shipped as one would load itself and show up
 # as a capability nobody asked for.
 put integration.md .leo/integrations/README.md
+
+# One per capability leo ships with. These are what the agent reads before
+# using a tool, and they are installed rather than read from $LEO_HOME so a
+# team can amend their own copy -- the same reason .leo/workflow.md is a copy.
+# Driven off BUILTIN_CAPS so adding a capability cannot forget its doc.
+for _cap in $BUILTIN_CAPS; do
+  [ -f "$LEO_HOME/templates/tools/$_cap.md" ] || continue
+  put "tools/$_cap.md" ".leo/tools/$_cap.md"
+done
 
 if [ ! -f .leo/config ] || [ "$_force" -eq 1 ]; then
   cat > .leo/config <<'CONF'

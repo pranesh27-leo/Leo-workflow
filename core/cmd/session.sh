@@ -174,10 +174,7 @@ note() {
   [ "$(cap_state "$1")" = "on" ] || return 0
   _rc=0; cap_present "$1" || _rc=$?
   [ "$_rc" -eq 2 ] || return 0
-  case "$1" in
-    graph) printf 'no adapter — upstream is noncommercial-only' ;;
-    *)     printf 'no adapter' ;;
-  esac
+  printf 'no adapter'
 }
 
 head_ "leo session"
@@ -232,8 +229,10 @@ if [ "$(cap_state rtk)" = "on" ] && [ "$(cap_state headroom)" = "on" ]; then
   info "  RTK and Headroom both reduce what the agent reads."
   dim  "    RTK filters shell output structurally; Headroom compresses the"
   dim  "    context semantically, and sees RTK's output already dense. The"
-  dim  "    second pass buys little on that buffer and adds a failure mode."
-  dim  "    Drop one: leo session --headroom off"
+  dim  "    second pass returns less than the first and adds a failure mode"
+  dim  "    the first does not have. Running both is a choice, not a mistake."
+  dim  "    The reason to drop one is detail work, which the mode already"
+  dim  "    does for you. By hand: leo session --headroom off"
 fi
 
 # --- dependencies ---------------------------------------------------------
@@ -255,6 +254,16 @@ for _c in $CAPS; do
     *) _state="no adapter" ;;
   esac
   printf '  %-13s %s\n' "$(label "$_c")" "$_state" >&2
+  # The instruction file, printed from here rather than by each adapter: one
+  # line of code instead of seven copies of it. Shown when the tool is here
+  # (you are about to use it) and when it is not (you need to know what it
+  # wants before installing it). Guarded on the file: an extension in
+  # .leo/integrations/ with no doc must print nothing rather than a path to a
+  # file that is not there -- an agent reading a missing file learns nothing
+  # and proceeds as though it had been told nothing.
+  _doc="$LEO_DIR/tools/$_c.md"
+  [ -f "$_doc" ] && [ "$_rc" != 2 ] \
+    && printf '      instructions: %s\n' "${_doc#"$ROOT"/}" >&2
   # Installed: what to do with it. Missing: how to get it. Neither, if leo has
   # no adapter -- there is nothing honest to say.
   case "$_rc" in

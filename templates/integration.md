@@ -42,5 +42,15 @@ That is the whole contract. An adapter never installs, launches or configures
 anything by itself — `leo install` is the only command that changes your
 machine, and it asks first.
 
+An adapter may ship an instruction file too. Drop `.leo/tools/<name>.md` in
+beside it, and `leo session` will point at it for anyone who has the capability
+on — the same line it prints for the tools leo ships with. Without one, leo
+prints nothing rather than a path to a file that is not there.
+
+That file is where a tool's prerequisites, failure signatures and standing
+orders belong. The adapter above keeps the install command and one line worth
+saying at the terminal; everything else goes in the doc, so there is one place
+to correct when the tool changes.
+
 This directory is committed, so a capability your team depends on arrives with
 the repository rather than in somebody's setup notes.

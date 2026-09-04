@@ -17,8 +17,7 @@ headroom_hint() {
 # here is the part that is only true once headroom is on the machine.
 headroom_advice() {
   if [ "$(cap_state serena)" = "on" ]; then
-    say "\`headroom wrap claude\` installs Serena itself, at user scope in ~/.claude.json,"
-    say "  and leaves it there until unwrapped. Do not configure Serena twice."
+    say "\`headroom wrap claude\` installs Serena itself, user-scope — see the doc above"
   fi
 }
 

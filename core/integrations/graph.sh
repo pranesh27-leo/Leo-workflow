@@ -31,6 +31,11 @@ graph_install() {
 }
 
 graph_advice() {
+  # The headline, before anything about which query to run: the MCP wire
+  # returns "Cannot read properties of undefined" on every call, and the CLI
+  # returns the same data. An agent that only knows the MCP names concludes
+  # the tool is dead and stops using it.
+  say "CLI only:  codebase-memory-mcp cli <tool> '<json>'  — see the doc above"
   case "$MODE" in
     debugging|review)
       say "trace_path — inbound callers first: who reaches the broken thing" ;;
