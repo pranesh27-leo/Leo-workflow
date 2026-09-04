@@ -117,6 +117,7 @@ leo init
   install .leo/config
   update  .gitignore (.leo/plan.md)
   update  .gitignore (.leo/manifest.md)
+  update  .gitignore (.leo/session)
 
 ok   ready
   1. fill in AGENTS.md — delete every placeholder you do not need
@@ -644,6 +645,10 @@ in the commit message anyway, and tracking it records the same intent twice.
 | Command | Who runs it | What it does |
 |---|---|---|
 | `leo init [--force]` | you, once per repo | installs AGENTS.md, CLAUDE.md, `.leo/` |
+| `leo session` | you | shows the mode and what it declares |
+| `leo session --mode <name>` | you | sets it: coding, debugging, learning, review, exploration |
+| `leo session --report` | either | where this change stands, end to end |
+| `leo session --clear` | you | ends it |
 | `leo plan "<name>"` | you, per change | writes the plan skeleton |
 | `leo plan` | either | shows the plan and where it stands |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
@@ -663,6 +668,7 @@ measures against the same base automatically, so the two can never disagree.
 | `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
 | `.leo/config` | yes | `TEST_CMD` |
+| `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
 | `.leo/manifest.md` | no | current review table |
 
@@ -683,7 +689,205 @@ probably not the right place for it.
 
 ---
 
-## 11. What this does not do
+## 11. Declaring the session
+
+Optional, and it is the one part of leo that does not check anything.
+
+Your agent does not read your code directly. By the time it gets there, several
+other tools may have had a turn: a semantic index deciding which symbols to show
+it, a filter trimming your test output, a compressor shortening what it
+remembers, a ruleset telling it to write less prose. Each is defensible on its
+own. Together they decide what the agent could see when it wrote the change —
+and the diff does not record any of it.
+
+`leo session` records it.
+
+```sh
+leo session --mode debugging
+```
+
+```
+leo session
+  Mode: debugging
+
+code intelligence
+  Serena        ON
+  Code graph    ON    no adapter — upstream is noncommercial-only
+
+efficiency
+  RTK           ON
+  Headroom      OFF
+  Ponytail      OFF
+  Caveman       OFF
+
+engineering controls
+  Plan          ON   always
+  Task IDs      ON   always
+  Manifest      ON   always
+  Rules         ON   always
+  Tests         ON   always
+  Human commit  ON   always
+
+dependencies
+  Serena        MISSING
+      uv tool install -p 3.13 serena-agent
+      claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
+  Code graph    no adapter
+  RTK           MISSING
+      brew install rtk
+      rtk init -g             installs the auto-rewrite hook
+
+warn 2 enabled capability(s) not installed — leo works without them
+  install one above, or drop it here: leo session --<name> off
+  leo does not install these. Declaring one does not switch anything on.
+```
+
+### The modes
+
+| Mode | For | What it changes |
+|---|---|---|
+| `coding` | building a planned change | everything on, including the reducers |
+| `debugging` | finding out why something is wrong | semantic reducers off |
+| `learning` | understanding code you did not write | reducers off, code graph on |
+| `review` | reading a change someone else made | reducers on, minimisation off |
+| `exploration` | surveying unfamiliar ground | reducers off, code graph on |
+
+The line that runs through all five: **structural filtering stays on, semantic
+filtering comes off when detail is the point.** Dropping progress bars and
+deduplicating repeated log lines is safe in any mode. A model deciding which
+lines mattered is not, because during debugging the thing that matters is
+routinely the thing that looks like noise.
+
+Override any one of them, and the override is marked as yours:
+
+```sh
+leo session --mode debugging --caveman on
+```
+
+Setting a new mode clears your overrides. Carrying a hand-set capability across
+a mode change is exactly how someone ends up debugging with the prose
+compressor still on.
+
+### The tools it can name
+
+Six capabilities, five of them with an adapter. An adapter is a file in
+`core/integrations/` that answers three questions and does nothing else:
+
+```sh
+serena_present() { command -v serena >/dev/null 2>&1; }   # installed?
+serena_hint()    { ... }                                  # how to install it
+serena_advice()  { ... }                                  # what to do with it
+```
+
+That is the entire integration surface. No installing, no launching, no
+wrapping, no writing outside `.leo/`. Adding one is the third extension point,
+and `.leo/rules/ADAPTER-CONTRACT.md` checks that a new one is reachable.
+
+| Capability | What it is for | Where it comes from |
+|---|---|---|
+| Serena | symbols, references, semantic edits | MIT, `oraios/serena` |
+| RTK | shell output filtering, structural | Apache-2.0, `rtk-ai/rtk` |
+| Headroom | context compression, semantic | Apache-2.0, `headroomlabs-ai/headroom` |
+| Ponytail | write less code | MIT, `DietrichGebert/ponytail` |
+| Caveman | write less prose | MIT skill, BSL-1.1 engine, `JuliusBrussee/caveman` |
+| Code graph | call chains, blast radius | **no adapter** — see below |
+
+Three things the dependencies block will tell you that are worth knowing before
+you install anything:
+
+- **RTK's hook rewrites the agent's Bash calls, and the agent runs `leo check`
+  through Bash.** A compressed check is a check whose failures the agent may not
+  read — and `leo check` writes the test result it just observed into the
+  manifest, so a truncated run becomes a recorded claim about tests nobody saw.
+  Exclude `leo` in `~/.config/rtk/config.toml`. The RTK adapter prints the
+  three lines you need.
+- **`headroom wrap claude` installs Serena itself**, at user scope in
+  `~/.claude.json`, and leaves it there until you unwrap. If Serena is also on,
+  you have two owners of one MCP entry. leo says so when both are enabled.
+- **RTK and Headroom both reduce what the agent reads**, and `coding` and
+  `review` turn both on. RTK filters shell output structurally; Headroom
+  compresses the context semantically and sees RTK's output already dense, so
+  the second pass buys little on that buffer. `leo session` prints a
+  **conflicts** block whenever both are declared — whether or not either is
+  installed, because that is a property of the policy, not of your machine.
+- **The code graph has no adapter on purpose.** GitNexus is the best of them and
+  is PolyForm Noncommercial: most people reading this write code at work. leo
+  will name the capability and tell you it cannot help, rather than ship a
+  default most of its users may not legally run.
+
+If a tool is not installed, leo says so and carries on. Nothing here can fail a
+check, and `leo check` on a machine with none of them installed behaves exactly
+as it does today — there is a test for that too.
+
+### The report
+
+```sh
+leo session --report
+```
+
+```
+leo session report
+  Change        session policy
+  Mode          debugging
+  Declared      serena, graph, rtk
+  Not installed serena, rtk
+  Tasks         12 of 14 done  |  in progress: T12
+  Change size   17 file(s), 733 lines
+  Manifest      18 hunk(s), 18 reviewed, 0 serving no task
+  Tests         `bash t/smoke.sh` -- passed, 2026-09-04 05:11 UTC
+  Approval      PENDING — leo commit is yours
+
+  no token figures here on purpose: the tools above measure different
+  things over overlapping buffers, and summing them would be fiction.
+```
+
+Every line is read back from something that already exists — the plan, the
+session file, git, the manifest. Nothing is stored to make this printable, and
+nothing here is a second source of truth.
+
+The last line is the point. `Approval: PENDING` is the only status leo will ever
+print for a change it can see, because deciding a change is done is not
+something a tool gets to do.
+
+### What it does not do
+
+**It does not install anything.** Serena, RTK and the rest are yours, set up
+once, outside leo. leo has no runtime dependency on any of them and never will:
+`git`, `bash` and a POSIX userland is the whole requirement, and a session file
+does not change that. Declaring a capability leo cannot act on says so on the
+line rather than looking enabled.
+
+**It does not gate anything.** `leo check` behaves identically with and without
+a session — there is a test that says so. The one thing a session adds to a
+failing check is a single line naming the mode, because a check failing while
+the session still says `coding` is the moment you realise you have been
+debugging for an hour with the reducers on.
+
+**It cannot turn a control off.** The engineering controls are listed above
+because they are the point of the tool, not because they are settings. There is
+no key for them in `.leo/session` and no flag for them on the command line;
+they live in the code that runs them. An optimisation may change what the agent
+sees. None of them gets to change what leo checks.
+
+**It does not report token savings.** Every tool named above measures a
+different thing against a different denominator, over buffers that overlap.
+Adding those numbers together produces a figure that is simply false, and leo
+would rather report nothing than that.
+
+Where it ends up is the commit message, next to `Assisted-by:`:
+
+```
+Session: debugging (caveman=on)
+Assisted-by: Claude Code
+```
+
+Which is the same bargain as the rest of leo: in six months the diff will not
+tell you the agent was working from compressed output when it wrote that line.
+`git show` will.
+
+---
+
+## 12. What this does not do
 
 Being clear about the edges is what makes the rest trustworthy.
 

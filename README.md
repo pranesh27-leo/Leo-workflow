@@ -6,7 +6,7 @@ It exists to answer one question: **when 500 lines arrive that you did not
 type, how do you know they are the right 500 lines — and how do you debug them
 at 3am without an AI?**
 
-## The five ideas
+## The six ideas
 
 1. **The agent grills you before it plans.** It asks questions in rounds — each
    with a recommended default — and stops after each round instead of running
@@ -30,6 +30,12 @@ at 3am without an AI?**
 5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
    that exits non-zero when a known mistake reappears. It runs on every
    `leo check`, costs no tokens, and outlives the session that learned it.
+6. **What the agent could see is part of the record.** Your agent does not read
+   your code directly — a semantic index, an output filter and a context
+   compressor may each have had a turn first, and the diff records none of it.
+   `leo session --mode debugging` declares which of them this kind of work
+   wants, and the answer lands in the commit message next to `Assisted-by:`.
+   leo installs none of them, and none of them can turn a check off.
 
 **New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
 complete change, with real output at every step.
@@ -44,6 +50,7 @@ cd ~/your-repo && leo init
 ## Use
 
 ```sh
+leo session --mode coding       # optional: what kind of work this is
 leo plan "rate limiting"        # after the agent has grilled you
                                 # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
@@ -74,15 +81,20 @@ change to survive across machines or be visible to teammates, drop
 leo                dispatch: a command is a file in core/cmd/, no registry
 core/lib.sh        every shared helper, one screen
 core/cmd/*.sh      one file per command, readable top to bottom
+core/integrations/ one file per external tool: detect, hint, advise
 templates/         what `leo init` copies into a repository
 ```
 
 ## Extending it
 
-There are exactly two extension points, and neither requires touching the code:
+There are exactly three extension points, and none requires touching the code:
 
 - **A new check** is a new file in `.leo/rules/`.
 - **A new command** is a new file in `core/cmd/`. `leo <name>` finds it.
+- **A new tool leo can name** is a new file in `core/integrations/` defining
+  three functions: is it installed, how do you install it, what should the agent
+  do with it. An adapter never installs or launches anything — leo has no
+  runtime dependency on any tool it can name, and that is not negotiable.
 
 If a change needs more machinery than that, it probably does not belong here.
 Every abstraction in this tool has to earn itself against a simple rule: you

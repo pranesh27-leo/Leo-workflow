@@ -6,6 +6,17 @@ output, that is the human's guide, and it does not overrule anything here.
 
 Five steps. Do the one you were asked for, and stop there.
 
+**First, check the session.** If `leo session` reports a mode, honour it. In
+`debugging`, `learning` and `exploration` the developer has asked for detail:
+do not compress output, do not shorten your reasoning, do not summarise
+something they may need to read line by line. The mode is theirs — never change
+it, and if the work has clearly turned into something else, say so and let them
+switch it.
+
+No mode ever relaxes what follows. Plan, task IDs, manifest, rules, tests and
+human commit apply in every mode, and nothing you are told to be brief about
+includes them.
+
 ---
 
 ## 1. Plan — "plan this", "frame this", "grill me"
@@ -99,8 +110,9 @@ Add anything non-obvious you decided to the manifest, in one line: what you
 chose, what you rejected, what you accepted as the cost.
 
 **Do not commit.** `leo commit` is the developer's, and it refuses to run
-without a human at a terminal. When the checks pass, show them the command and
-stop:
+without a human at a terminal. When the checks pass, run `leo session --report`
+— it is the whole state of the change on one screen — then show them the
+command and stop:
 
 ```
 Checks pass. 2 files, +47 lines, every hunk mapped to T1/T2.
@@ -116,6 +128,7 @@ having just written the thing.
 ## 5. Resume — "where were we"
 
 ```sh
+leo session            # the mode, if the developer set one
 leo plan               # the plan, plus "2 of 5 done | in progress: T3"
 git diff HEAD          # the code already written
 cat .leo/manifest.md   # the review table, as far as it got

@@ -14,6 +14,13 @@ leo $(cat "$LEO_HOME/VERSION") — keep AI-written code reviewable.
 
 COMMANDS
   init [--force]          set up this repository
+  session [--mode <name>] declare what kind of work this is -- coding,
+                          debugging, learning, review, exploration. Optional,
+                          and it switches nothing on: it says what this work
+                          wants, tells you what is missing, and lands in the
+                          commit message.
+  session --report        where this change stands: plan, mode, size,
+                          manifest, tests, approval
   plan ["<name>"]         start a change, or show it and where it stands
   scan [base]             enumerate hunks into .leo/manifest.md
   check                   rules + unreviewed hunks + invented task IDs
@@ -26,7 +33,10 @@ FILES
   AGENTS.md               agent instructions, loaded every session (keep it short)
   .leo/workflow.md        the loop, read on demand
   .leo/rules/*.md         one lesson per file, each with a shell check
+  core/integrations/*.sh  one file per external tool: detect, hint, advise.
+                          leo installs none of them and needs none of them.
   .leo/config             TEST_CMD
+  .leo/session            current mode (gitignored — it lands in the commit)
   .leo/plan.md            current change (gitignored — it lands in the commit)
   .leo/manifest.md        current review table (same)
 

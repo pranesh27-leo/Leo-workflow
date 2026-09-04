@@ -59,6 +59,11 @@ trap 'rm -f "$_msg"' EXIT
     warn "no manifest — this commit records what changed but not why"
   fi
 
+  # What the agent could see when it wrote this. A change made with the prose
+  # and context reducers on carries different risk from one made with full
+  # diagnostic output, and six months from now the diff will not say which.
+  _sess=$(session_desc)
+  [ -n "$_sess" ] && printf 'Session: %s\n' "$_sess"
   printf 'Assisted-by: %s\n' "$(who)"
 } > "$_msg"
 

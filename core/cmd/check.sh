@@ -121,7 +121,12 @@ _result=""
 if [ -z "$TEST_CMD" ]; then
   warn "TEST_CMD unset in .leo/config — leo cannot verify anything for you"
 else
-  if _out=$(cd "$ROOT" && eval "$TEST_CMD" 2>&1); then
+  # LEO_YES is leo's own control variable, and it must not reach the tests.
+  # `LEO_YES=1 leo commit` exports it to everything downstream, including
+  # TEST_CMD -- and a suite that exercises leo's own refusal to commit without
+  # a human then watches that refusal not happen. leo's smoke test found this
+  # by failing; any project testing similar behaviour would hit it too.
+  if _out=$(cd "$ROOT" && unset LEO_YES && eval "$TEST_CMD" 2>&1); then
     ok "$TEST_CMD"
     printf '%s\n' "$_out" | tail -3 | sed 's/^/       /' >&2
     _result="\`$TEST_CMD\` -- passed, $(now)"
@@ -147,5 +152,11 @@ if [ -f "$MANIFEST" ]; then
 fi
 
 echo >&2
-[ "$_fail" -eq 0 ] || die "check failed"
+if [ "$_fail" -ne 0 ]; then
+  # The mode is worth one line here and nowhere else: a check that fails while
+  # the session is still set to coding is the moment someone realises they have
+  # been debugging for an hour with the reducers on.
+  [ -n "$MODE" ] && dim "  session mode: $MODE"
+  die "check failed"
+fi
 ok "all checks passed"

@@ -46,9 +46,9 @@ CONF
   info "  install .leo/config"
 fi
 
-# The plan and the manifest are working state; they end up in commit messages,
-# so they should not also be tracked as files.
-for _ignore in ".leo/plan.md" ".leo/manifest.md"; do
+# The plan, the manifest and the session are working state; they end up in
+# commit messages, so they should not also be tracked as files.
+for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session"; do
   grep -qxF "$_ignore" .gitignore 2>/dev/null || {
     printf '%s\n' "$_ignore" >> .gitignore
     info "  update  .gitignore ($_ignore)"
