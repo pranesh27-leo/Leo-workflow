@@ -726,5 +726,31 @@ has "$(cat "$g")" "Do not act on it until the user confirms" \
 n=$(wc -c < "$g" | tr -d ' ')
 [ "$n" -eq 1987 ] && ok "the vendored skill is byte-for-byte unchanged ($n b)" \
                   || bad "the vendored skill changed size: $n b, expected 1987"
+
+printf 'the documents describe the tool that exists\n'
+# A document showing output the tool no longer produces teaches the reader
+# their install is broken. These are the four things that changed under DEMO.
+d="$LEOHOME/DEMO.md"
+# Patterns are anchored on a leading word rather than starting with "--",
+# because grep reads a leading double dash as the end of its own options.
+has "$(cat "$d")" "grill"           "DEMO names the grill"
+has "$(cat "$d")" "task T1 --sub"   "DEMO names subtasks"
+has "$(cat "$d")" "ungrilled"       "DEMO names the gate that blocks"
+has "$(cat "$d")" "check --verbose" "DEMO names the verbose flag"
+
+# Every `leo check` block in DEMO must show the grill stage, because every real
+# run prints one between manifest and budget.
+n_blocks=$(grep -c '^manifest$' "$d" || true)
+n_grill=$(grep -c '^grill$' "$d" || true)
+[ "${n_grill:-0}" -ge "${n_blocks:-0}" ] \
+  && ok "every check block in DEMO shows the grill stage ($n_grill/$n_blocks)" \
+  || bad "DEMO has $n_blocks check blocks but only $n_grill grill stages"
+
+# README is where someone looks first, so the loop it prints must be the loop.
+r="$LEOHOME/README.md"
+has "$(cat "$r")" "subtask" "README names the subtask stage"
+for c in "leo plan" "leo task" "leo scan" "leo check" "leo commit" "leo build"; do
+  has "$(cat "$r")" "$c" "README names $c"
+done
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -46,6 +46,22 @@ every hunk it wrote, and put that accounting where git will keep it.**
 
 ## 2. The mental model
 
+Seven stages, and the command for each:
+
+```
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+           leo plan  leo task  leo task     write it  leo scan     leo commit
+                     T1        T1 --sub "x"           leo check    <- yours
+```
+
+Do the stage you were asked for and stop there. If you are asked for something
+two stages ahead — code with no plan, a commit with no manifest — the agent is
+told to name the stage being skipped and wait, rather than quietly doing it in
+passing. You may well have a reason; it is yours to give.
+
+Two things block, and only two: a hunk that serves no task, and a task that
+was never grilled. Everything else leo writes is a working note.
+
 Three files hold everything. All three are plain markdown you can read and edit.
 
 | File | What it is | Written by |

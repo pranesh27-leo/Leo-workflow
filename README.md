@@ -117,6 +117,45 @@ If a change needs more machinery than that, it probably does not belong here.
 Every abstraction in this tool has to earn itself against a simple rule: you
 must be able to read the whole thing in one sitting.
 
+## Using it, day to day
+
+The loop, and the command for each stage:
+
+```
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+```
+
+```sh
+# 1. grill — say "grill me on this, then plan it". No cap on questions or
+#    rounds; it ends when you and the agent share the same understanding.
+# 2. plan
+leo plan "rate limiting"           # then fill in goal, non-goals, tasks, budget
+
+# 3. task — one file per plan row, carrying that task's grill
+leo task T1
+leo task                           # every task, its to-do, its status
+
+# 4. subtask — when a task turns out to hold more than one decision
+leo task T1 --sub "in-memory store"   # a heading inside T1.md, not a new file
+
+# 5. build — the agent writes the code, one task at a time
+
+# 6. manifest
+leo scan                           # diff -> one row per hunk
+leo check                          # rules, hunks, grill, budget, tests
+leo check --verbose                # ...showing every stage
+
+# 7. commit — yours, never the agent's
+leo commit "api: per-key rate limiting"
+```
+
+Then **start a fresh session for the next task.** An agent re-reads its whole
+context every turn, so a session's cost grows with the square of its length —
+`.leo/tasks/` exists so stopping costs you nothing.
+
+Two things block: a hunk with no task, and a task with no grill. Everything
+else is a working note.
+
 ## Vendoring it into your repo
 
 Rather than symlinking one clone into every project, build a single

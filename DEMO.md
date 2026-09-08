@@ -320,6 +320,50 @@ tree, and the diff does not care that it was setup.
 
 ---
 
+## 6b. Two things this walkthrough predates
+
+leo gained both of these after the session below was recorded, so they do not
+appear in the transcript. They are part of the loop now.
+
+**Subtasks.** A task that turns out to hold more than one decision gets split
+rather than guessed at:
+
+```sh
+leo task T1 --sub "in-memory store"
+```
+
+That adds a `## T1.1` heading **inside** `T1.md` — never a file of its own.
+Reading `T1.md` then gives you the parent's reasoning and every child's in one
+read, instead of four files to answer one question.
+
+**The grill gate.** Every task and subtask arrives carrying `leo:ungrilled`,
+and `leo check` fails while that marker is there:
+
+```
+grill
+ERR  T1 is ungrilled (2 section(s)) — grill it, record what it settled
+  the grill itself: .leo/skills/grilling/SKILL.md
+  no limit on questions or rounds — stop on shared understanding
+```
+
+It is the only thing in a task file that blocks anything. Everything else
+there is a working note. A task nobody questioned is a task built on whatever
+the agent assumed, and the assumption becomes code before anyone reads it.
+
+**One more difference you will notice immediately:** `leo check` is quiet when
+it passes — three lines, not twenty-six. Every line a passing check prints is
+re-read by the agent on every later turn, and a passing check is the least
+informative thing leo prints. Use `leo check --verbose` to see each stage. The
+failing checks below are still shown in full, because failures stay loud.
+
+> **A note on this transcript.** The session below was run against the real
+> `click` repository and the output is what leo printed at the time. The
+> `grill` stage was added to leo afterwards, so its lines in the check blocks
+> below were inserted by hand to match what the current tool prints — they are
+> the only lines here that were not produced by running the command. If you
+> follow this walkthrough today and your output differs anywhere else, trust
+> your terminal and open an issue.
+
 ## 7. Check — three failures, all real
 
 ```
@@ -332,6 +376,9 @@ manifest
 ok   every hunk reviewed
 ok   every task ID is one the plan declared
 warn 1 hunk(s), 8 lines, serve no task — revert, promote or split
+
+grill
+ok   T1 has been grilled
 
 budget
 ERR  est 14 LOC, actual 34 LOC (over 2x) — re-read the request before reviewing
@@ -394,6 +441,9 @@ rules
 manifest
 ok   every hunk reviewed
 ok   every task ID is one the plan declared
+
+grill
+ok   T2 has been grilled
 
 budget
 ok   est 16 LOC / actual 28 LOC
@@ -483,6 +533,9 @@ rules
 manifest
 ok   every hunk reviewed
 ok   every task ID is one the plan declared
+
+grill
+ok   T2 has been grilled
 
 budget
 ok   est 16 LOC / actual 28 LOC
