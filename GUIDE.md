@@ -104,6 +104,33 @@ leo --version
 leo 0.2.0
 ```
 
+### Or vendor it into the repository instead
+
+A symlink into `/usr/local/bin` makes every repository on the machine depend
+on one clone, at whatever revision that clone last pulled. Nobody can tell
+later which version of leo checked a given commit, and a second developer gets
+a different one.
+
+`leo build` compiles the whole source tree — every command, every adapter,
+every template — into one self-contained file with no siblings:
+
+```sh
+cd ~/leo
+./leo build                       # writes dist/leo
+cp dist/leo ~/work/myrepo/.leo/bin/leo
+cd ~/work/myrepo && git add -f .leo/bin/leo
+```
+
+`.leo/bin/leo` is now part of your repository. It is still bash and still
+carries every comment, so it can be read and reviewed like anything else you
+commit; `leo --version` and the header name the revision it was built from.
+Everyone who clones your repo runs the same leo, and there is nothing to
+install.
+
+Rebuild and re-vendor to upgrade. A built leo refuses `leo build` — it has no
+source tree to compile — and says so rather than pretending the command does
+not exist.
+
 ---
 
 ## 4. Set up a repository
@@ -435,6 +462,20 @@ Five rows, all of them accounted for.
 > test result nobody observed. If the agent left a placeholder there and no test
 > command is configured, check fails.
 
+### A note on session length
+
+`leo check` prints almost nothing when it passes, and that is deliberate. An
+agent re-reads its whole context on every turn, so anything printed early is
+paid for again on every turn that follows — the cost of a session grows with
+the square of its length. Measured on real sessions here: halving a 357-turn
+session would have cost 33% of its tokens, not 50%.
+
+The practical consequence is the advice at the end of `leo commit`: **finish a
+task, commit, start a fresh session.** `.leo/tasks/` exists so that costs you
+nothing — the next session reads a plan and a task file instead of inheriting
+four hours of tool output. On the growth rates measured here, six short
+sessions cost roughly a seventh of one long one doing the same work.
+
 ### Step 7 — You commit
 
 The agent stops here. It shows you the command and waits:
@@ -714,8 +755,10 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo task T1` | agent | gives one plan task its own file and to-do, or shows it |
 | `leo task` | either | every task, its to-do progress and its plan status |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
-| `leo check` | agent | rules, unreviewed hunks, invented IDs, budget, tests |
+| `leo check` | agent | rules, unreviewed hunks, invented IDs, grill, budget, tests — quiet on success |
+| `leo check --verbose` | agent | the same, printing every stage |
 | `leo commit "<subject>"` | **you only** | commits with the manifest in the message |
+| `leo build [--out <path>]` | you | compiles one self-contained `leo` to vendor into a repo |
 | `leo help` | either | the short version of this document |
 
 `leo scan main` reviews against a branch instead of `HEAD`; `leo check` then

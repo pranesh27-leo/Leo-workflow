@@ -63,6 +63,23 @@ lines_changed() {
 
 now() { date -u '+%Y-%m-%d %H:%M UTC'; }
 
+# -------------------------------------------------------------- assets ----
+# Everything leo reads out of its own install goes through here: the version
+# and the templates. A single-file build (`leo build`) emits these same three
+# functions with the content compiled in, sets LEO_BUNDLED, and this block then
+# does not run -- so a bundle answers from itself and never looks for a source
+# tree that is not next to it.
+#
+# The guard is what keeps the two builds honest. There is exactly one caller
+# for each asset in either build; the source tree cannot grow a direct
+# "$LEO_HOME/templates/..." read without the bundle losing it silently, because
+# ASSET-SEAM fails the check when it does.
+if [ -z "${LEO_BUNDLED:-}" ]; then
+  leo_version() { cat "$LEO_HOME/VERSION"; }
+  tmpl_has()    { [ -f "$LEO_HOME/templates/$1" ]; }
+  tmpl_cat()    { cat "$LEO_HOME/templates/$1"; }
+fi
+
 # ------------------------------------------------------------- layout ----
 # Everything leo owns lives under .leo/. One directory, no surprises.
 LEO_DIR="${ROOT:-.}/.leo"
@@ -372,7 +389,15 @@ session_desc() {
 # `.leo/config` already is and `.leo/rules/*.md` already are. Read an unfamiliar
 # repository's `.leo/` before running leo in it, the same as you would its
 # Makefile.
-ADAPTER_DIRS="$LEO_HOME/core/integrations${ROOT:+ $ROOT/.leo/integrations}"
+# In a bundle the built-in adapters are already defined as functions and there
+# is no directory to glob, so only the repository's own dir is listed. Dropping
+# it entirely would be the easy bug: a bundle that silently cannot load the
+# adapters a team wrote for their own repo.
+if [ -n "${LEO_BUNDLED:-}" ]; then
+  ADAPTER_DIRS="${ROOT:+$ROOT/.leo/integrations}"
+else
+  ADAPTER_DIRS="$LEO_HOME/core/integrations${ROOT:+ $ROOT/.leo/integrations}"
+fi
 
 for _dir in $ADAPTER_DIRS; do
   for _adapter in "$_dir"/*.sh; do

@@ -18,7 +18,11 @@ while [ -L "$_self" ]; do
   case "$_self" in /*) ;; *) _self="$_dir/$_self" ;; esac
 done
 LEO_HOME=$(cd -P "$(dirname "$_self")" && pwd)
-export LEO_HOME
+# The resolved path to this file. `leo commit` re-runs the checks by
+# executing leo again, and in a bundle there is no $LEO_HOME/leo to run --
+# the bundle is the whole install, so it re-execs itself.
+LEO_SELF="$_self"
+export LEO_HOME LEO_SELF
 
 . "$LEO_HOME/core/lib.sh"
 
@@ -27,7 +31,7 @@ cmd="${1:-help}"
 
 case "$cmd" in
   -h|--help)  cmd=help ;;
-  --version)  echo "leo $(cat "$LEO_HOME/VERSION")"; exit 0 ;;
+  --version)  echo "leo $(leo_version)"; exit 0 ;;
 esac
 
 _file="$LEO_HOME/core/cmd/$cmd.sh"
