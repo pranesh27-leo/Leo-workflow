@@ -147,7 +147,7 @@ else
   if [ "$_un" -gt 0 ]; then
     err "$_task is ungrilled ($_un section(s)) — grill it, record what it settled"
     dim "  the grill itself: .leo/skills/grilling/SKILL.md"
-    dim "  scale it to the work; one question is fine, zero is not"
+    dim "  no limit on questions or rounds — stop on shared understanding"
     _fail=1
   else
     ok "$_task has been grilled"

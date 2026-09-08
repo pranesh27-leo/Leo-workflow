@@ -26,9 +26,11 @@ Once per **task** and once per **subtask**, not once per change. Interview the
 developer until the decisions are settled, then record what they settled in
 the task file's `## Grill` section.
 
-`.leo/skills/grilling/SKILL.md` defines how. Follow it; do not invent your own.
-Scale it: a one-line fix earns one question. Zero is never allowed, and
-`leo check` fails while a task reads `leo:ungrilled`.
+`.leo/skills/grilling/SKILL.md` defines how. Follow it; do not invent your own,
+and do not limit yourself — ask as many questions, over as many rounds, as
+reaching the same understanding takes. Stop when the developer confirms it,
+never at a question count. Zero questions is not a grill: `leo check` fails
+while a task reads `leo:ungrilled`.
 
 ## Standing orders
 

@@ -27,9 +27,13 @@ COMMANDS
                           Nothing else in leo installs anything.
   plan ["<name>"]         start a change, or show it and where it stands
   task [T1] [--force]     give a plan task its own file and to-do, or list
-                          them all with their progress. Nothing blocks on it:
-                          it is the agent's working memory between the plan
-                          and the manifest.
+                          them all with their progress. The file carries the
+                          grill for that task; `leo check` fails while it is
+                          still marked ungrilled.
+  task T1 --sub "<name>"  add a subtask as a heading inside T1.md. Subtasks
+                          never get files of their own, and each arrives
+                          ungrilled -- it is grilled before it is built,
+                          exactly as its parent was.
   scan [base]             enumerate hunks into .leo/manifest.md
   check [--verbose]       rules + unreviewed hunks + invented task IDs
                           + grill + budget + tests. Quiet when it passes,

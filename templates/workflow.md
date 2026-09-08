@@ -59,27 +59,32 @@ includes them.
 
 Do not write code. Do not summarise. Do not offer a plan yet. Ask questions.
 
-Each round:
+**How to grill is `.leo/skills/grilling/SKILL.md`.** Read it and follow it.
+It is vendored unmodified and it is the only definition of a grill here —
+leo says *when* to grill and never how much.
 
-1. Ask 3–10 questions. No cap — ask as many as you genuinely need.
-2. Give your recommended default with each, so the user can answer "yes",
-   "yes", "no, X" instead of writing an essay.
-3. **End your reply there.** Do not plan, do not summarise, do not suggest next
-   steps. Wait.
-4. When the answers land, ask the next round. Stop only when you can paraphrase
-   the user's intent back and they confirm it.
+**There is no limit.** Not on questions, not on rounds. The purpose is to
+reach the same understanding the developer already has in their head, and
+that is done when it is done. Ask everything that would change the design:
+tech choices, what already exists versus what you would build, constraints,
+integration points, the data model, failure modes, and above all what is
+explicitly **out** of scope. If you are unsure whether a question matters,
+ask it — an unnecessary question costs a line, an unasked one costs a change.
 
-Ask about anything that would change the design: tech choices, what already
-exists versus what you would build, constraints, integration points, the data
-model, failure modes, and above all what is explicitly **out** of scope. If you
-are unsure whether a question matters, ask it.
+**Stop on shared understanding, never on a count.** The skill's condition is
+the frontier emptying — every branch of the design tree visited, nothing left
+silently assumed — and then the developer confirming. Two rounds or twenty,
+whichever that takes. A grill that ends because it felt like enough questions
+has not ended, it has been abandoned.
 
-Three rounds or twenty, both are fine. If you feel the pull to be helpful by
-proceeding anyway, resist it: planning on assumptions is not helpful, it is
-expensive. And it is self-defeating — in step 3 every hunk must name the task it
-serves, and that test has teeth only if the tasks are specific and the non-goals
-are real. A vague plan justifies anything, and then nothing you wrote can ever
-look unwanted.
+**End every round at the questions.** Do not plan, do not summarise, do not
+suggest next steps, do not start work "while you wait". Wait.
+
+If you feel the pull to be helpful by proceeding anyway, resist it: planning
+on assumptions is not helpful, it is expensive. And it is self-defeating — at
+the manifest stage every hunk must name the task it serves, and that test has
+teeth only if the tasks are specific and the non-goals are real. A vague plan
+justifies anything, and then nothing you wrote can ever look unwanted.
 
 **Then, and only then**, run `leo plan "<name>"` and fill in `.leo/plan.md`:
 

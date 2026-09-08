@@ -22,8 +22,9 @@ transcript. A question whose answer was the obvious default settled nothing
 and does not earn a line. The test: delete the line, and if someone could
 still rebuild the same code from what is left, it was transcript.>
 
-Scale it to the work. A one-line fix earns one question, not five. What is not
-allowed is zero.
+Ask as much as it takes. There is no cap on questions or rounds — the grill
+ends when you and the developer share the same understanding and they say so,
+not when the questions feel like enough. What is not allowed is zero.
 
 ## Done when
 

@@ -10,7 +10,9 @@ at 3am without an AI?**
 
 1. **The agent grills you before it plans.** It asks questions in rounds — each
    with a recommended default — and stops after each round instead of running
-   ahead. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
+   ahead. There is no limit on how many: it keeps going until you and it share
+   the same understanding and you say so. The grill itself is Matt Pocock's
+   `grill-me` skill, vendored unmodified into `.leo/skills/`. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
    tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
    is specific enough to measure against. A vague plan justifies anything.
    Then `leo task T1` gives each of those numbered tasks its own file: what
@@ -114,6 +116,22 @@ There are exactly three extension points, and none requires touching the code:
 If a change needs more machinery than that, it probably does not belong here.
 Every abstraction in this tool has to earn itself against a simple rule: you
 must be able to read the whole thing in one sitting.
+
+## Vendoring it into your repo
+
+Rather than symlinking one clone into every project, build a single
+self-contained file and commit it:
+
+```sh
+git clone https://github.com/pranesh27-leo/Leo-workflow.git ~/leo
+cd ~/leo && ./leo build              # -> dist/leo, one file, no siblings
+cp dist/leo ~/work/myrepo/.leo/bin/leo
+cd ~/work/myrepo && git add -f .leo/bin/leo
+```
+
+Everyone who clones your repo now runs the same leo, pinned to the revision
+its header names. It is still bash and still carries every comment, so it can
+be reviewed like anything else you commit.
 
 ## Requirements
 

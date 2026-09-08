@@ -223,7 +223,17 @@ hunk looks necessary, and nothing can ever come back marked unwanted. Against
 "in-memory token bucket, 60/min, per key, no new dependencies", the Redis client
 the agent adds out of habit has nowhere to hide.
 
-Answer the questions. Let it ask another round if it needs one. Then:
+Answer them, and let it keep going. There is no cap on questions or rounds —
+five questions or fifty, the grill ends when you and the agent share the same
+understanding of what is being built and you confirm it, not when the
+questions run out. That is the whole point of the stage: the cheapest place to
+discover you meant something different is before the plan, not after the diff.
+
+If it stops early and offers a plan while you can still think of things it has
+not asked, say so. The grill is `.leo/skills/grilling/SKILL.md` — Matt
+Pocock's skill, vendored unmodified, and leo does not override it.
+
+When you are done:
 
 ```sh
 leo plan "rate limiting"
@@ -322,6 +332,39 @@ leo task
   T1    3/5     in-progress   token bucket, per key
   T2    0/4     pending       429 response and Retry-After
 ```
+
+### Splitting a task, and the grill that goes with it
+
+A task often turns out to hold more than one decision. Split it rather than
+guessing at the ones you did not ask about:
+
+```sh
+leo task T1 --sub "in-memory store"
+leo task T1 --sub "the 429 response body"
+```
+
+Each becomes a `## T1.1`, `## T1.2` heading **inside `T1.md`** — never a file
+of its own. One file per subtask turns a five-task change into twenty files,
+and an agent that must read four of them to answer one question pays four
+reads to do it. The parent's reasoning and every child's arrive in one read.
+
+Each subtask arrives carrying `leo:ungrilled`, and is grilled before it is
+built, exactly as its parent was. That marker is the one thing in a task file
+with teeth:
+
+```
+grill
+ERR  T1 is ungrilled (2 section(s)) — grill it, record what it settled
+```
+
+Everything else in a task file is a working note that blocks nothing. The
+grill blocks, because a task nobody questioned is a task built on whatever the
+agent assumed, and the assumption becomes code before anyone sees it.
+
+Record **decisions, not the transcript**. A grill that ran twenty questions
+might produce five lines — the ones where the answer could have gone the other
+way. The test: delete a line, and if someone could still rebuild the same code
+from what is left, it was transcript.
 
 ### Step 3 — The agent builds it
 
@@ -513,6 +556,39 @@ If any hunk in the commit still serves no task, the prompt says so before you
 answer — a last look at what you are about to make permanent.
 
 ---
+
+## 5b. Measuring what it costs you
+
+leo makes AI-written code reviewable. Whether it makes it *cheaper* is a
+separate question, and the answer measured here was no — see
+`.leo/plans/C5-benchmark/RESULTS.md`. Three instruments ship with it:
+
+```sh
+bash t/bench-context.sh          # what leo costs per request, always
+bash t/bench-session.sh --all    # what real sessions actually cost
+bash t/fixtures/generate.sh && ANTHROPIC_API_KEY=sk-... bash t/bench.sh
+```
+
+**`bench-context.sh`** measures the always-loaded footprint — `AGENTS.md` plus
+`CLAUDE.md`, re-read on every single request. No key, no network. This is the
+one that can see a change you made this morning.
+
+**`bench-session.sh`** reads the transcripts Claude Code already writes and
+reports what sessions actually cost, classified by whether leo was used. Also
+no key: these are the counts the API itself reported. It is a measurement
+instrument, not part of the workflow, and it is the only Claude-Code-specific
+thing in the repository.
+
+**`bench.sh`** compares artifact sizes — manifest against diff — via
+Anthropic's `count_tokens`. It needs an API key, which a Claude Pro or Max
+subscription does **not** include; that is a separate account at
+console.anthropic.com. Counting tokens is free of charge.
+
+The headline finding, if you read nothing else: **cost is quadratic in turns,
+not linear in bytes.** Every turn re-reads every turn before it, so halving a
+session's length costs a third of its tokens rather than half. The cheapest
+thing you can do is finish a task, commit, and start a fresh session —
+`.leo/tasks/` exists so that costs you nothing.
 
 ## 6. When check complains
 

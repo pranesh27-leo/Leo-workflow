@@ -696,5 +696,35 @@ w=$(grep -ci "quadratic\|re-read" "$LEOHOME/templates/AGENTS.md" || true)
 has "$(cat "$LEOHOME/templates/workflow.md")" "fresh session" \
   "workflow.md carries the reasoning"
 cd "$TMP/repo"
+
+printf 'the grill has a floor and no ceiling\n'
+# leo says WHEN to grill. How much to grill is the vendored skill's business,
+# and it stops on shared understanding rather than on a count. Any number leo
+# states here is leo overriding the thing it vendored.
+for f in templates/workflow.md templates/AGENTS.md templates/task.md \
+         core/cmd/check.sh README.md; do
+  if grep -nE '[0-9]+ *[-–] *[0-9]+ *questions|earns one question|one question is fine|ask [0-9]+ (to|-|–) *[0-9]* *questions' \
+       "$LEOHOME/$f" >/dev/null 2>&1; then
+    bad "no question cap in $f"
+  else
+    ok "no question cap in $f"
+  fi
+done
+
+# The floor is not a number, and it must survive: zero questions is not a grill.
+has "$(cat "$LEOHOME/templates/workflow.md")" "shared understanding" \
+  "the workflow names the real stop condition"
+has "$(cat "$LEOHOME/core/cmd/check.sh")" "ungrilled" \
+  "check still fails on an ungrilled task"
+
+# The vendored skill is somebody else's file. Editing it to make a point about
+# question counts would defeat the reason it was vendored.
+g="$LEOHOME/templates/skills/grilling/SKILL.md"
+has "$(cat "$g")" "frontier"     "the vendored skill is still intact"
+has "$(cat "$g")" "Do not act on it until the user confirms" \
+  "the vendored stop condition is untouched"
+n=$(wc -c < "$g" | tr -d ' ')
+[ "$n" -eq 1987 ] && ok "the vendored skill is byte-for-byte unchanged ($n b)" \
+                  || bad "the vendored skill changed size: $n b, expected 1987"
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
