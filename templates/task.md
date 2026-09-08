@@ -10,6 +10,21 @@ of a status always drift, and the one you did not update is the one somebody
 reads.
 -->
 
+## Grill
+
+<!-- leo:ungrilled — `leo check` fails while this line is here. Delete it when
+     the grill below is real. It is not paperwork: a task nobody questioned is
+     a task built on whatever the agent assumed, and that assumption is about
+     to become code. -->
+
+<The decisions the grill settled, one line each. Decisions only -- not the
+transcript. A question whose answer was the obvious default settled nothing
+and does not earn a line. The test: delete the line, and if someone could
+still rebuild the same code from what is left, it was transcript.>
+
+Scale it to the work. A one-line fix earns one question, not five. What is not
+allowed is zero.
+
 ## Done when
 
 <An observable condition. Something you can run -- a command, a test name, an

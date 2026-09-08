@@ -4,13 +4,17 @@
 explanation — if you want the reasoning, the worked examples and the sample
 output, that is the human's guide, and it does not overrule anything here.
 
-Six stages. Do the one you were asked for, and stop there.
+Seven stages. Do the one you were asked for, and stop there.
 
 ```
-grill me  ->  plan  ->  task creation  ->  build  ->  manifest  ->  commit
-              leo plan   leo task T1      write it   leo scan      leo check
-                                                     leo check     leo commit  <- theirs
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+           leo plan  leo task  leo task     write it   leo scan     leo check
+                     T1        T1 --sub "x"            leo check    leo commit <- theirs
 ```
+
+`subtask` is a stage, not a formality. A task that turns out to hold three
+decisions needs all three asked; before this existed they were settled by
+whatever the agent assumed at the moment it started typing.
 
 **Know where you are, and say so.** Before doing what you were asked, work out
 which stage this change is in. `leo session --report` computes it and prints it
@@ -107,9 +111,53 @@ the task is done; the task file says what is left inside it. Never put a status
 in the task file — two copies drift, and the one you did not update is the one
 somebody reads.
 
-Nothing blocks on these. `leo check` does not read them and an unticked box
-fails nothing: this is your working memory, and it exists so that a session
-ending mid-task costs nothing.
+**Grill before you build it — every task, and every subtask.** Not once per
+change. Before the first line of code for `T1`, interview the developer until
+the decisions inside `T1` are settled, then record what was settled in the
+task file's `## Grill` section and delete the `leo:ungrilled` marker.
+
+How to grill is `.leo/skills/grilling/SKILL.md` — read it and follow it. It is
+vendored unmodified and it is the only definition of a grill in this
+repository; do not restate it here and do not invent your own.
+
+Record decisions, not the transcript. A question whose answer was the obvious
+default settled nothing. Scale the grill to the work: a one-line fix earns one
+question, five is theatre, and zero is never allowed.
+
+Break a task up when the grill shows it holds more than one decision:
+
+```sh
+leo task T1 --sub "in-memory store"   # a heading inside T1.md, not a new file
+```
+
+Each subtask arrives with its own ungrilled marker, and is grilled before it
+is built, exactly as its parent was.
+
+An unticked box still fails nothing — the to-do is your working memory, so a
+session ending mid-task costs nothing. The **grill** is the one thing here
+that blocks: `leo check` fails while the task in flight is ungrilled.
+
+### End the session when the task ends
+
+When a commit lands, say so and stop: **start a fresh session for the next
+task.**
+
+An agent session re-reads its entire context on every turn, so the cost of a
+session grows with the *square* of its length — the tenth turn is paid for by
+the ninety turns after it. Measured on real sessions: cutting a 357-turn
+session in half would have cost 33% of its tokens, not 50%. On the same growth
+rate, six short sessions cost roughly a seventh of one long one doing the same
+work.
+
+This is what `.leo/tasks/` is actually for. The task file was introduced so a
+session ending mid-change cost nothing; that same property makes ending a
+session *on purpose* the cheapest thing available. A new session reads the
+plan, the task file and the manifest — a few hundred lines — instead of
+inheriting every tool result from the last four hours.
+
+Nothing enforces this. leo cannot see how long your session has been running
+without reading one specific agent's transcript format, and it will not do
+that. It is your call, made at the one moment leo can observe.
 
 ## 3. Build — "implement T1"
 

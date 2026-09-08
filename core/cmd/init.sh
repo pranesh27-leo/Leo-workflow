@@ -22,15 +22,19 @@ put() { # put <template> <destination>
     dim "  skip    $2 (exists)"
   else
     mkdir -p "$(dirname "$2")"
-    cp "$LEO_HOME/templates/$1" "$2"
+    tmpl_cat "$1" > "$2"
     info "  install $2"
   fi
 }
 
-mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools
+mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools .leo/skills
 
 put AGENTS.md      AGENTS.md
 put CLAUDE.md      CLAUDE.md
+# What this repository is, as opposed to how to work in it. AGENTS.md loads on
+# every request and has to stay short enough that a weak model reads to the
+# end; everything repo-specific goes here instead.
+put CONTEXT.md     CONTEXT.md
 put workflow.md    .leo/workflow.md
 put rule.md        .leo/rules/EXAMPLE.md
 # A README rather than a sample adapter: leo sources every *.sh in that
@@ -43,8 +47,17 @@ put integration.md .leo/integrations/README.md
 # team can amend their own copy -- the same reason .leo/workflow.md is a copy.
 # Driven off BUILTIN_CAPS so adding a capability cannot forget its doc.
 for _cap in $BUILTIN_CAPS; do
-  [ -f "$LEO_HOME/templates/tools/$_cap.md" ] || continue
+  tmpl_has "tools/$_cap.md" || continue
   put "tools/$_cap.md" ".leo/tools/$_cap.md"
+done
+
+# The grill is stage one of the loop, and it is somebody else's work: these
+# are copied in unmodified so the definition of a grill cannot change under a
+# repository between two sessions. See .leo/skills/README.md.
+for _s in skills/grilling/SKILL.md skills/grill-me/SKILL.md \
+          skills/LICENSE skills/README.md; do
+  tmpl_has "$_s" || continue
+  put "$_s" ".leo/$_s"
 done
 
 if [ ! -f .leo/config ] || [ "$_force" -eq 1 ]; then

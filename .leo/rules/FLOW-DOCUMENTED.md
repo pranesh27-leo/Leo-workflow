@@ -3,9 +3,9 @@
 MUST: every stage of the loop is named in `templates/workflow.md`, and every
 command that stage depends on exists in `core/cmd/`.
 
-The loop is `grill me -> plan -> task creation -> build -> manifest -> commit`,
-and the agent is expected to know all six even when the developer names none of
-them. That only works if the file the agent reads actually lists them.
+The loop is `grill -> plan -> task -> subtask -> build -> manifest -> commit`,
+and the agent is expected to know all seven even when the developer names none
+of them. That only works if the file the agent reads actually lists them.
 
 Learned from: `leo task` was added as a stage between plan and build. Nothing
 in leo would have failed if `templates/workflow.md` had never mentioned it —
@@ -21,8 +21,8 @@ w=templates/workflow.md
 missing=""
 [ -f "$w" ] || { echo "no $w"; exit 1; }
 
-# The six stage names, as the loop header spells them.
-for stage in "grill" "plan" "task" "build" "manifest" "commit"; do
+# The seven stage names, as the loop header spells them.
+for stage in "grill" "plan" "task" "subtask" "build" "manifest" "commit"; do
   grep -qi "$stage" "$w" || missing="$missing stage:$stage"
 done
 

@@ -15,10 +15,11 @@
 
 need_repo
 
-_id=""; _force=0
+_id=""; _force=0; _sub=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) _force=1; shift ;;
+    --sub)   shift; [ $# -gt 0 ] || die '--sub needs a name'; _sub="$1"; shift ;;
     -*)      die "unknown option: $1" ;;
     *)       _id="$1"; shift ;;
   esac
@@ -52,6 +53,43 @@ esac
 
 _f=$(task_file "$_id")
 
+# --- subtask --------------------------------------------------------------
+# A subtask is a heading inside its parent's file, never a file of its own.
+# One file per subtask turns a five-task change into twenty files, and an agent
+# that must read four of them to answer one question pays four reads to do it.
+# The parent's reasoning and every child's arrive in a single read this way.
+if [ -n "$_sub" ]; then
+  [ -f "$_f" ] || die "no file for $_id yet — create it first: leo task $_id"
+
+  # Numbered from what is already in the file rather than from a counter kept
+  # somewhere else: the file is the only state, so it cannot disagree with
+  # itself. `|| true` because grep -c exits 1 on no match, and no subtasks yet
+  # is the normal case.
+  _n=$(grep -c "^## $_id\.[0-9]" "$_f" 2>/dev/null || true)
+  _n=$((${_n:-0} + 1))
+
+  tmpl_has subtask.md || die "missing template: subtask.md"
+  tmpl_cat subtask.md | \
+  LEO_SUBID="$_id.$_n" \
+  LEO_SUBNAME="$_sub" awk '
+    function rep(str, from, to,   out, i) {
+      while ((i = index(str, from)) > 0) {
+        out = out substr(str, 1, i - 1) to
+        str = substr(str, i + length(from))
+      }
+      return out str
+    }
+    { line = $0
+      line = rep(line, "<SUBID>",   ENVIRON["LEO_SUBID"])
+      line = rep(line, "<SUBNAME>", ENVIRON["LEO_SUBNAME"])
+      print line
+    }' >> "$_f"
+
+  ok "subtask added: $_id.$_n $_sub"
+  dim "  it arrives ungrilled — leo check fails until you record what it settled"
+  exit 0
+fi
+
 # --- show -----------------------------------------------------------------
 # Create-or-show rather than a --show flag: one fewer thing to document, and
 # the destructive path stays behind --force, as `leo plan` already does.
@@ -82,8 +120,7 @@ fi
 
 # Without this the awk below writes an empty file and reports success -- a
 # task file with no "Done when" and no to-do, which is worse than no file.
-_tpl="$LEO_HOME/templates/task.md"
-[ -f "$_tpl" ] || die "missing template: $_tpl"
+tmpl_has task.md || die "missing template: task.md"
 
 mkdir -p "$(dirname "$_f")"
 # awk rather than sed: the substituted values are task names and file lists
@@ -94,6 +131,12 @@ mkdir -p "$(dirname "$_f")"
 # processes escape sequences in a -v assignment. A multi-line to-do is a syntax
 # error there, and a file list like `a\b.go` silently became a backspace.
 # ENVIRON is taken literally, with no escaping at any level.
+# The template arrives on stdin rather than as a filename, because in a
+# single-file build there is no file to name. The pipeline has to open with
+# tmpl_cat: put it after the assignments and they attach to tmpl_cat instead
+# of awk, every ENVIRON lookup returns empty, and the task file is written
+# with <NAME> and <FILES> silently blanked rather than substituted.
+tmpl_cat task.md | \
 LEO_ID="$_id" \
 LEO_NAME="$(plan_task_name "$_id")" \
 LEO_FILES="$(plan_task_files "$_id")" \
@@ -117,7 +160,7 @@ LEO_TODO="$_todo" awk '
     line = rep(line, "<FILES>", ENVIRON["LEO_FILES"])
     line = rep(line, "<EST>",   ENVIRON["LEO_EST"])
     if (line == "<TODO>") { print ENVIRON["LEO_TODO"] } else { print line }
-  }' "$_tpl" > "$_f"
+  }' > "$_f"
 
 ok "task created: ${_f#"$ROOT"/}"
 dim "  fill in \"Done when\" first — the to-do falls out of it"
