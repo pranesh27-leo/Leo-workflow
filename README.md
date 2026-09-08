@@ -118,3 +118,7 @@ must be able to read the whole thing in one sitting.
 ## Requirements
 
 git, bash 3.2, and a POSIX userland. No jq, no node, no network.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pranesh Kumar.
