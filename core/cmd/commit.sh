@@ -34,7 +34,7 @@ done
 [ -n "$_subject" ] || die 'usage: leo commit "<subject>"'
 
 if [ "$_check" -eq 1 ]; then
-  bash "$LEO_HOME/leo" check || die "checks failed — fix them, or commit --no-check"
+  bash "$LEO_SELF" check || die "checks failed — fix them, or commit --no-check"
 fi
 
 _msg=$(mktemp "${TMPDIR:-/tmp}/leo-msg.XXXXXX")
@@ -90,3 +90,15 @@ git commit -F "$_msg"
 rm -f "$MANIFEST"
 ok "committed $(git rev-parse --short HEAD)"
 dim "  read it back: git show --stat HEAD"
+
+# The cheapest thing leo can tell you. An agent session re-reads its whole
+# context on every turn, so cost grows with the square of the turn count:
+# halving a session's length costs about a third of its tokens, not half. A
+# commit is the natural place to stop, and the task files are what make
+# stopping free -- .leo/tasks/ holds the state a new session needs.
+#
+# leo says this here rather than measuring how long the session has run,
+# because it cannot see that without reading one specific agent's transcript
+# format. A commit landing is something every agent's leo can observe.
+dim "  now start a fresh session — .leo/tasks/ carries the state, and a long"
+dim "  session pays for every earlier turn on every later one"

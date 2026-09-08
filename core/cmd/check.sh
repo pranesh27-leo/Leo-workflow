@@ -1,11 +1,35 @@
 #!/usr/bin/env bash
 # desc: run the rules, the manifest check, the budget check and the tests
-# usage: leo check
+# usage: leo check [--verbose]
 #
 # Four checks, in the order that catches mistakes cheapest-first. Read this file
 # top to bottom -- there is no plugin system and no hidden ordering.
+#
+# Quiet on success, loud on failure. This used to print 26 lines every time it
+# passed, and in an agent session every one of those lines is re-read on every
+# turn for the rest of the session -- a passing check is the least informative
+# thing leo prints and it was the most expensive. Warnings still come through:
+# terse means "hide what went right", not "hide what you need to know".
 
 need_repo
+
+_verbose=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --verbose|-v) _verbose=1; shift ;;
+    -*)           die "unknown option: $1" ;;
+    *)            die "unexpected argument: $1" ;;
+  esac
+done
+
+# Everything the stages print goes to a buffer first. On failure the buffer is
+# replayed whole -- a failure is rare and the detail is the entire point. On
+# success only the warnings and one summary line survive.
+_buf=$(mktemp "${TMPDIR:-/tmp}/leo-check.XXXXXX")
+trap 'rm -f "$_buf"' EXIT
+if [ "$_verbose" -eq 0 ]; then
+  exec 3>&2 2>"$_buf"
+fi
 
 # The base is whatever `leo scan` reviewed against, so the budget can never be
 # measured against a different starting point than the manifest was. Guard the
@@ -98,7 +122,39 @@ else
   fi
 fi
 
-# --- 3. budget ------------------------------------------------------------
+# --- 3. grill -------------------------------------------------------------
+# Every task is grilled, and so is every subtask. This is the one place in leo
+# where a task file blocks anything, and it is deliberate: a task nobody
+# questioned is a task built on whatever the agent assumed, and the assumption
+# becomes code before anyone sees it.
+#
+# Only the task being worked on. Grilling T5 while you are on T1 would mean
+# answering questions about code that does not exist yet, and the answers would
+# be guesses -- which is the thing this is trying to prevent.
+head_ "grill"
+_task=$(task_current)
+if [ -z "$_task" ]; then
+  dim "  no task in flight"
+elif [ ! -f "$(task_file "$_task")" ]; then
+  # Not a failure: the task stage simply has not happened yet, and `leo task`
+  # is what happens next. Saying so beats failing a check for a file whose
+  # absence is the normal state five minutes into a change.
+  warn "$_task has no file yet — run: leo task $_task"
+else
+  _tf=$(task_file "$_task")
+  _un=$(grep -c 'leo:ungrilled' "$_tf" 2>/dev/null || true)
+  _un=${_un:-0}
+  if [ "$_un" -gt 0 ]; then
+    err "$_task is ungrilled ($_un section(s)) — grill it, record what it settled"
+    dim "  the grill itself: .leo/skills/grilling/SKILL.md"
+    dim "  scale it to the work; one question is fine, zero is not"
+    _fail=1
+  else
+    ok "$_task has been grilled"
+  fi
+fi
+
+# --- 4. budget ------------------------------------------------------------
 # An overshoot past 2x almost always means the requirement was misread, not
 # that the work was genuinely bigger. Re-plan; do not review harder.
 head_ "budget"
@@ -115,7 +171,7 @@ else
   fi
 fi
 
-# --- 4. tests -------------------------------------------------------------
+# --- 5. tests -------------------------------------------------------------
 head_ "tests"
 _result=""
 if [ -z "$TEST_CMD" ]; then
@@ -152,11 +208,44 @@ if [ -f "$MANIFEST" ]; then
 fi
 
 echo >&2
+
+# Restore the real stderr before anything else is printed, or the summary ends
+# up in the buffer it is summarising.
+if [ "$_verbose" -eq 0 ]; then
+  exec 2>&3 3>&-
+fi
+
 if [ "$_fail" -ne 0 ]; then
+  [ "$_verbose" -eq 0 ] && cat "$_buf" >&2
   # The mode is worth one line here and nowhere else: a check that fails while
   # the session is still set to coding is the moment someone realises they have
   # been debugging for an hour with the reducers on.
   [ -n "$MODE" ] && dim "  session mode: $MODE"
   die "check failed"
 fi
-ok "all checks passed"
+
+if [ "$_verbose" -eq 0 ]; then
+  # Warnings are not "what went right". A hunk serving no task, a missing
+  # manifest, a capability declared and not installed -- each is something the
+  # developer has to decide about, and swallowing it to save four lines would
+  # be buying tokens with the thing the tokens were for.
+  grep -a '^warn' "$_buf" >&2 || true
+
+  # Every one of these three greps legitimately matches nothing -- no rules
+  # directory, no manifest, a plan with no estimate -- and under `pipefail` a
+  # grep that matches nothing fails the whole assignment, which `set -e` then
+  # turns into the command exiting 1 with the summary never printed. That is
+  # exactly the failure `plan_est` in lib.sh carries a comment about, and it
+  # presented here as "check dies silently on a repo with no plan".
+  _nrules=$(ls "$RULES"/*.md 2>/dev/null | wc -l | tr -d ' ' || printf 0)
+  _nhunks=$(grep -ac '^| *[0-9NEW]' "$MANIFEST" 2>/dev/null || printf 0)
+  _bud=$(grep -ao 'est [0-9]* LOC / actual [0-9]* LOC' "$_buf" 2>/dev/null | head -1 || true)
+  ok "all checks passed"
+  printf '  %s rule(s)%s%s\n' \
+    "${_nrules:-0}" \
+    "$([ "${_nhunks:-0}" -gt 0 ] && printf ', %s hunk(s) reviewed' "$_nhunks")" \
+    "${_bud:+, $_bud}" >&2
+  dim "  leo check --verbose to see every stage"
+else
+  ok "all checks passed"
+fi

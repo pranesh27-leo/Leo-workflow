@@ -4,7 +4,7 @@
 
 cat >&2 <<EOF
 
-leo $(cat "$LEO_HOME/VERSION") — keep AI-written code reviewable.
+leo $(leo_version) — keep AI-written code reviewable.
 
   You    grill the agent, then    leo plan "rate limiting"
   Agent  leo task T1              each task gets a file and a to-do
@@ -31,10 +31,17 @@ COMMANDS
                           it is the agent's working memory between the plan
                           and the manifest.
   scan [base]             enumerate hunks into .leo/manifest.md
-  check                   rules + unreviewed hunks + invented task IDs
-                          + budget + tests
+  check [--verbose]       rules + unreviewed hunks + invented task IDs
+                          + grill + budget + tests. Quiet when it passes,
+                          loud when it does not -- every line a passing check
+                          prints is re-read on every later turn. --verbose
+                          shows each stage.
   commit "<subject>"      commit with the manifest in the message.
                           Refuses without a human at a terminal.
+  build [--out <path>]    compile the source tree into one self-contained
+                          file (default dist/leo). Vendor that into the repo
+                          you work in, so it depends on a file it contains
+                          rather than on a clone somewhere else.
   help                    this
 
 FILES
