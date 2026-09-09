@@ -10,14 +10,20 @@ understand a year later. No prior knowledge assumed.
 3. [Install](#3-install)
 4. [Set up a repository](#4-set-up-a-repository)
 5. [A complete change, step by step](#5-a-complete-change-step-by-step)
-6. [When check complains](#6-when-check-complains)
-7. [Reading the record later](#7-reading-the-record-later)
-8. [Writing your first rule](#8-writing-your-first-rule)
-9. [Picking up a change days later](#9-picking-up-a-change-days-later)
-10. [Reference](#10-reference)
-11. [What this does not do](#11-what-this-does-not-do)
+6. [The review cycle](#6-the-review-cycle)
+7. [When check complains](#7-when-check-complains)
+8. [Reading the record later](#8-reading-the-record-later)
+9. [Writing your first rule](#9-writing-your-first-rule)
+10. [Picking up a change days later](#10-picking-up-a-change-days-later)
+11. [Reference](#11-reference)
+12. [What this does not do](#12-what-this-does-not-do)
 
 ---
+
+> Everything in this guide is described against a small example. For the same
+> workflow run end to end against a real upstream project — a real defect in
+> `pallets/click`, checked against its own 1990-test suite, including the three
+> times leo rejected the change before it landed — see **[DEMO.md](DEMO.md)**.
 
 ## 1. The problem
 
@@ -41,6 +47,32 @@ every hunk it wrote, and put that accounting where git will keep it.**
 
 ## 2. The mental model
 
+Two cycles. Seven stages in the first, four in the second:
+
+```
+CYCLE ONE -- build it
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+           leo plan  leo task  leo task     write it  leo scan     leo commit
+                     T1        T1 --sub "x"           leo check    <- yours
+                                                                       |
+CYCLE TWO -- read it, in a new session                                 v
+brief  ->  read  ->  findings  ->  close
+leo review <sha>   the diff vs     leo review --close  <- yours
+                   STANDARDS.md
+```
+
+Cycle one writes code and cannot review it. Cycle two reads a commit that
+already exists and cannot edit it — section 6.
+
+Do the stage you were asked for and stop there. If you are asked for something
+two stages ahead — code with no plan, a commit with no manifest — the agent is
+told to name the stage being skipped and wait, rather than quietly doing it in
+passing. You may well have a reason; it is yours to give.
+
+Two things block in cycle one, and only two: a hunk that serves no task, and a
+task that was never grilled. One thing blocks in cycle two: a `blocker` finding
+nobody has fixed or waived. Everything else leo writes is a working note.
+
 Three files hold everything. All three are plain markdown you can read and edit.
 
 | File | What it is | Written by |
@@ -48,6 +80,7 @@ Three files hold everything. All three are plain markdown you can read and edit.
 | `.leo/plan.md` | what the change is *allowed* to be | you and the agent, before any code |
 | `.leo/manifest.md` | one row per hunk: which task it serves, why, what breaks without it | the agent, after the code |
 | commit message | the manifest, permanently | `leo commit`, run by you |
+| `.leo/reviews/<sha>.md` | one row per finding against a commit that landed | the reviewer, in cycle two |
 
 And one word you need: a **hunk** is a contiguous block of changed lines that
 git reports as one unit. A 500-line change is typically 15–25 hunks. That is
@@ -99,6 +132,33 @@ leo --version
 leo 0.2.0
 ```
 
+### Or vendor it into the repository instead
+
+A symlink into `/usr/local/bin` makes every repository on the machine depend
+on one clone, at whatever revision that clone last pulled. Nobody can tell
+later which version of leo checked a given commit, and a second developer gets
+a different one.
+
+`leo build` compiles the whole source tree — every command, every adapter,
+every template — into one self-contained file with no siblings:
+
+```sh
+cd ~/leo
+./leo build                       # writes dist/leo
+cp dist/leo ~/work/myrepo/.leo/bin/leo
+cd ~/work/myrepo && git add -f .leo/bin/leo
+```
+
+`.leo/bin/leo` is now part of your repository. It is still bash and still
+carries every comment, so it can be read and reviewed like anything else you
+commit; `leo --version` and the header name the revision it was built from.
+Everyone who clones your repo runs the same leo, and there is nothing to
+install.
+
+Rebuild and re-vendor to upgrade. A built leo refuses `leo build` — it has no
+source tree to compile — and says so rather than pretending the command does
+not exist.
+
 ---
 
 ## 4. Set up a repository
@@ -117,6 +177,7 @@ leo init
   install .leo/config
   update  .gitignore (.leo/plan.md)
   update  .gitignore (.leo/manifest.md)
+  update  .gitignore (.leo/session)
 
 ok   ready
   1. fill in AGENTS.md — delete every placeholder you do not need
@@ -190,7 +251,17 @@ hunk looks necessary, and nothing can ever come back marked unwanted. Against
 "in-memory token bucket, 60/min, per key, no new dependencies", the Redis client
 the agent adds out of habit has nowhere to hide.
 
-Answer the questions. Let it ask another round if it needs one. Then:
+Answer them, and let it keep going. There is no cap on questions or rounds —
+five questions or fifty, the grill ends when you and the agent share the same
+understanding of what is being built and you confirm it, not when the
+questions run out. That is the whole point of the stage: the cheapest place to
+discover you meant something different is before the plan, not after the diff.
+
+If it stops early and offers a plan while you can still think of things it has
+not asked, say so. The grill is `.leo/skills/grilling/SKILL.md` — Matt
+Pocock's skill, vendored unmodified, and leo does not override it.
+
+When you are done:
 
 ```sh
 leo plan "rate limiting"
@@ -239,17 +310,102 @@ Four things earn their place here:
 - **`est: 45 LOC`** is the budget. It does not need to be accurate — it needs to
   be *written down before the code exists*, so a 3× overshoot is visible.
 
-### Step 2 — The agent builds it
+### Step 2 — The agent gives each task a file
+
+Say **"make the tasks"**. For every row of the plan's table:
+
+```sh
+leo task T1
+```
+
+That writes `.leo/tasks/T1.md` — a skeleton the agent fills in, the same way
+`leo plan` writes a plan skeleton for you to fill in:
+
+```markdown
+# T1: token bucket, per key
+
+Files: api/limit.go
+Est:   60 LOC
+
+## Done when
+`go test ./api -run TestBucket` passes, and a 61st request in a minute gets 429.
+
+## To-do
+- [ ] write the test from "Done when" above — the spec, not the implementation
+- [ ] run it, watch it FAIL, and confirm it failed for the reason you expect
+- [ ] implement the smallest thing that makes it pass
+- [ ] run it, watch it pass
+- [ ] set T1 to done in .leo/plan.md
+
+## Notes
+Rejected a sliding window: needs a second timestamp per key and the plan's
+budget does not cover the storage change.
+```
+
+That to-do is the TDD capability doing something visible — with `--tdd off` you
+get two blank placeholders and your own order instead. Section 11 covers the
+switch.
+
+**Where the statuses live.** The plan's `Status` column says whether a task is
+done. The task file says what is left *inside* it. Neither restates the other,
+and a task file with a `Status:` field is a bug — it is the copy nobody
+updates.
+
+Nothing blocks on any of this. `leo check` never reads a task file and an
+unticked box fails nothing. It is the agent's working memory, and it exists so
+that a session ending mid-task costs you nothing:
+
+```sh
+leo task
+  T1    3/5     in-progress   token bucket, per key
+  T2    0/4     pending       429 response and Retry-After
+```
+
+### Splitting a task, and the grill that goes with it
+
+A task often turns out to hold more than one decision. Split it rather than
+guessing at the ones you did not ask about:
+
+```sh
+leo task T1 --sub "in-memory store"
+leo task T1 --sub "the 429 response body"
+```
+
+Each becomes a `## T1.1`, `## T1.2` heading **inside `T1.md`** — never a file
+of its own. One file per subtask turns a five-task change into twenty files,
+and an agent that must read four of them to answer one question pays four
+reads to do it. The parent's reasoning and every child's arrive in one read.
+
+Each subtask arrives carrying `leo:ungrilled`, and is grilled before it is
+built, exactly as its parent was. That marker is the one thing in a task file
+with teeth:
+
+```
+grill
+ERR  T1 is ungrilled (2 section(s)) — grill it, record what it settled
+```
+
+Everything else in a task file is a working note that blocks nothing. The
+grill blocks, because a task nobody questioned is a task built on whatever the
+agent assumed, and the assumption becomes code before anyone sees it.
+
+Record **decisions, not the transcript**. A grill that ran twenty questions
+might produce five lines — the ones where the answer could have gone the other
+way. The test: delete a line, and if someone could still rebuild the same code
+from what is left, it was transcript.
+
+### Step 3 — The agent builds it
 
 Say **"implement T1"**. One task at a time, tests first. The agent moves the
-Status column along: `pending` → `in-progress` → `done`.
+Status column along: `pending` → `in-progress` → `done`, and ticks the boxes in
+the task file as it goes.
 
 Nothing in leo enforces this one — it is discipline, specified in
-`.leo/workflow.md`. What you get for it is section 9: that column is the entire
+`.leo/workflow.md`. What you get for it is section 10: that column is the entire
 memory of a long change, and it is the difference between resuming a dropped
 session in ten seconds and reconstructing it from the diff.
 
-### Step 3 — Split the diff into hunks
+### Step 4 — Split the diff into hunks
 
 ```sh
 leo scan
@@ -285,7 +441,7 @@ Tests: <command> -- <paste the real output>
 
 Seven rows. That is the whole change, and you can hold seven rows in your head.
 
-### Step 4 — The agent fills in the three columns
+### Step 5 — The agent fills in the three columns
 
 This is the part that cannot be automated, because it is judgement. Three
 columns, and what you should get out of each when you read the finished table:
@@ -318,7 +474,7 @@ The agent renamed `payload` to `encoded_payload` in a method nobody asked it to
 touch. Harmless, plausible, and completely unrequested — the exact thing that is
 invisible in a 500-line diff and obvious in a table.
 
-### Step 5 — Check
+### Step 6 — Check
 
 ```sh
 leo check
@@ -377,7 +533,21 @@ Five rows, all of them accounted for.
 > test result nobody observed. If the agent left a placeholder there and no test
 > command is configured, check fails.
 
-### Step 6 — You commit
+### A note on session length
+
+`leo check` prints almost nothing when it passes, and that is deliberate. An
+agent re-reads its whole context on every turn, so anything printed early is
+paid for again on every turn that follows — the cost of a session grows with
+the square of its length. Measured on real sessions here: halving a 357-turn
+session would have cost 33% of its tokens, not 50%.
+
+The practical consequence is the advice at the end of `leo commit`: **finish a
+task, commit, start a fresh session.** `.leo/tasks/` exists so that costs you
+nothing — the next session reads a plan and a task file instead of inheriting
+four hours of tool output. On the growth rates measured here, six short
+sessions cost roughly a seventh of one long one doing the same work.
+
+### Step 7 — You commit
 
 The agent stops here. It shows you the command and waits:
 
@@ -415,7 +585,267 @@ answer — a last look at what you are about to make permanent.
 
 ---
 
-## 6. When check complains
+## 5b. Measuring what it costs you
+
+leo makes AI-written code reviewable. Whether it makes it *cheaper* is a
+separate question, and the answer measured here was no — see
+`.leo/plans/C5-benchmark/RESULTS.md`. Three instruments ship with it:
+
+```sh
+bash t/bench-context.sh          # what leo costs per request, always
+bash t/bench-session.sh --all    # what real sessions actually cost
+bash t/fixtures/generate.sh && ANTHROPIC_API_KEY=sk-... bash t/bench.sh
+```
+
+**`bench-context.sh`** measures the always-loaded footprint — `AGENTS.md` plus
+`CLAUDE.md`, re-read on every single request. No key, no network. This is the
+one that can see a change you made this morning.
+
+**`bench-session.sh`** reads the transcripts Claude Code already writes and
+reports what sessions actually cost, classified by whether leo was used. Also
+no key: these are the counts the API itself reported. It is a measurement
+instrument, not part of the workflow, and it is the only Claude-Code-specific
+thing in the repository.
+
+**`bench.sh`** compares artifact sizes — manifest against diff — via
+Anthropic's `count_tokens`. It needs an API key, which a Claude Pro or Max
+subscription does **not** include; that is a separate account at
+console.anthropic.com. Counting tokens is free of charge.
+
+The headline finding, if you read nothing else: **cost is quadratic in turns,
+not linear in bytes.** Every turn re-reads every turn before it, so halving a
+session's length costs a third of its tokens rather than half. The cheapest
+thing you can do is finish a task, commit, and start a fresh session —
+`.leo/tasks/` exists so that costs you nothing.
+
+## 6. The review cycle
+
+The commit ends cycle one. It does not end the work: the change now exists and
+nothing has read it except the developer who wrote it, which is the one reviewer
+whose opinion is already spent.
+
+So `leo commit` asks:
+
+```
+ok   committed 0a79621
+  read it back: git show --stat HEAD
+  now start a fresh session — .leo/tasks/ carries the state, and a long
+  session pays for every earlier turn on every later one
+
+review it?
+  The change is in, and unreviewed. Cycle two is a separate flow: it
+  reads this commit -- goal, manifest and session are all in the message
+  -- and it cannot edit the code, only find things about it.
+
+  leo session --mode review
+  leo review 0a79621
+
+  It ends at: leo review --close
+```
+
+It asks rather than starting, for the same reason it does not commit: a review
+is a session's worth of work, and scheduling it is yours.
+
+### Why it is a separate cycle
+
+Two reasons, and neither is process for its own sake.
+
+**The reviewer cannot be the author.** Cycle two cannot edit the code — there is
+no stage in it that writes to your source tree. An agent that can fix what it
+finds stops reporting and starts finishing, and you lose the one artifact you
+wanted: a list of what is wrong, written down, before anyone decided what to do
+about it.
+
+**A fresh session is a better reader.** An agent that spent an hour building
+something carries every reason it was sure. Cycle two needs almost none of that
+context, and everything it does need is in the commit message cycle one wrote.
+
+### Opening one
+
+```sh
+leo session --mode review
+leo review              # the last commit; or leo review <sha>, or leo review main..HEAD
+```
+
+```
+ok   opened .leo/reviews/0a79621.md — 0a79621, 1 file(s)
+
+Read, in this order:
+  1. the "What was asked for" section — what the dev cycle recorded
+  2. .leo/review/STANDARDS.md — what a finding here has to clear
+  3. git show 0a79621 — the code, against both
+
+Then fill the findings table, write the verdict, and: leo review --close
+You cannot fix anything from here. A fix is a new dev cycle.
+```
+
+The file it writes is **briefed, not blank**. This is the part that makes cycle
+two worth having: leo reassembles what cycle one recorded, because a reviewer
+who does not know what was asked for can only check the code against itself —
+and that is how a change that is internally consistent and completely wrong
+passes.
+
+Everything below is assembled by the shell, from the commit message `leo commit`
+wrote and the plan and task files still on disk:
+
+```markdown
+Commit:  0a79621  (Dev, 2026-09-09)
+Subject: auth: check passwords
+Goal:    Add password checking to the API.
+Written: Claude Code
+
+### The manifest this commit was made with
+
+| # | Hunk | Delta | Task | Why | If deleted |
+| NEW | `auth.py` | +13 | T1 | the plan asked for password checking | auth breaks |
+
+Budget: est 12 LOC / actual 13 LOC
+Tests: `true` -- passed, 2026-09-09 04:12 UTC
+
+### From .leo/plan.md — "auth"
+
+Non-goals — a hunk that serves one of these is a finding:
+
+  Session management. Rate limiting.
+
+Wrong-change signal:
+
+  If auth needs a new dependency, this is the wrong change.
+
+### What the grill settled — from .leo/tasks/
+
+T1:
+  Chose md5 because the legacy table stores md5. Rejected bcrypt: needs a migration.
+  Accepted cost: no constant-time compare in v1.
+```
+
+That last block is the one you cannot get anywhere else. The diff shows md5; it
+does not show that md5 was *argued for and accepted*, with a reason. A reviewer
+without it files "md5 is weak" as a blocker, the author replies "we discussed
+that", and the review has cost two people an afternoon to rediscover a decision
+that was already written down.
+
+### Signals
+
+Then a section the shell greps out of the diff:
+
+```markdown
+### Secrets — a literal assigned to a credential-shaped name
+
+  auth.py:3  API_KEY = "sk-live-9f83aa21bb0c"
+
+### Untrusted input reaching an interpreter
+
+  auth.py:10  subprocess.run("id -u " + user.name, shell=True)
+
+### Authentication, authorisation and crypto
+
+  auth.py:7  if hashlib.md5(pw.encode()).hexdigest() == user.pwhash:
+
+### Errors that may be going nowhere
+
+  auth.py:11  except:
+
+### Tests
+
+1 source file(s) changed, 0 test file(s) changed.
+```
+
+**A signal is not a finding.** It is a grep with a line number, it costs no
+tokens, and it says where to look and never what to think. Most will be nothing;
+clearing one costs a glance. The failure mode is a signal leo *did not* raise —
+so the list is never the scope of the review.
+
+### Findings, and the two words that matter
+
+The reviewer fills one row per finding:
+
+```markdown
+| # | Severity | Where | Finding | Why it matters | Status |
+|---|----------|-------|---------|----------------|--------|
+| 1 | blocker | `auth.py:3` | live API key committed | anyone with repo read access has the key; it must be rotated, not just deleted | open |
+| 2 | improvement | `auth.py:10` | shell=True with an interpolated username | command injection if a username can contain a space or a semicolon | open |
+
+Verdict: fix-first — read auth.py in full against the standards; the md5
+choice is grilled and accepted, the key is not.
+```
+
+Severity is `blocker`, `improvement` or `nit`. Status is `open`, `fixed` or
+`waived`. The vocabulary is closed because `leo review --close` reads those two
+columns and nothing else.
+
+What a finding has to clear is `.leo/review/STANDARDS.md` — installed into your
+repository by `leo init`, and yours to amend. It is a rubric, not a checklist:
+design, correctness, security, tests, maintainability, performance,
+dependencies, in that order, with the rule that every finding names the failure
+it causes. "I would have written it differently" is not a finding.
+
+### Closing it
+
+```sh
+leo review --close
+```
+
+It refuses three ways, and only three:
+
+```
+ERR  the findings table does not read
+  row 1: severity "critical" is not blocker/improvement/nit
+```
+
+```
+ERR  1 blocker(s) still open — fix them in a new dev cycle, or waive them
+  `auth.py:3`  live API key committed
+  a fix is a dev cycle, not an edit: leo plan "fix: 0a79621 review"
+  waiving one is the developer's call, and it stays in the file
+```
+
+```
+ERR  the review states no verdict — say ship or fix-first, and why
+```
+
+The third is the same test as the manifest's `Tests:` line: a conclusion nobody
+typed is not a conclusion, and the placeholder the template shipped with is how
+you tell. Zero findings is allowed — it is a claim, and the verdict has to say
+what was read to support it.
+
+When it passes:
+
+```
+ok   review 0a79621 closes — 2 finding(s), 1 blocker(s), 0 waived
+  1 open improvement(s)/nit(s) — a dev cycle when you want them, not now
+
+The review is a record of a commit that already exists, so unlike the
+plan and the manifest it has nowhere to live but the repository:
+  git add .leo/reviews/0a79621.md && git commit -m "review: 0a79621 — fix-first, 2 finding(s)"
+```
+
+### Where the record lives, and why here
+
+`.leo/plan.md` and `.leo/manifest.md` are gitignored, because both end up
+*inside* the commit message they describe. A review cannot: it is written about
+a commit whose message was sealed before the review existed.
+
+So `.leo/reviews/*.md` is the one thing under `.leo/` that is **tracked**. It is
+the only copy of cycle two there will ever be, and a rule
+(`.leo/rules/REVIEW-TRACKED.md`) exists to stop somebody tidying it into
+`.gitignore` — which would delete every review in every repository and fail no
+test anywhere.
+
+### Handing back
+
+A blocker leaves the table two ways, and both are yours:
+
+- **fixed** — start a cycle one for it: `leo plan "fix: 0a79621 review"`. The
+  fix gets a plan, tasks, a grill, a manifest and a commit, exactly like any
+  other change. Then name that commit on the review's `Fixed-by:` line.
+- **waived** — you accept it. The row stays in the file with its reason, where
+  the next person reads it.
+
+The agent recommends; it does not choose. Having found the problem is not the
+same as being entitled to decide what it is worth.
+
+## 7. When check complains
 
 Four failures, what each means, and what to do.
 
@@ -471,7 +901,7 @@ A mistake you have already fixed once has come back. Section 8.
 
 ---
 
-## 7. Reading the record later
+## 8. Reading the record later
 
 This is what all of it was for. Six months on, `git log`:
 
@@ -526,7 +956,7 @@ and `git blame` are already in your fingers.
 
 ---
 
-## 8. Writing your first rule
+## 9. Writing your first rule
 
 Rules are how a lesson outlives the conversation that learned it. Both you and
 your agent can write them — `.leo/workflow.md` tells the agent when to reach for
@@ -592,7 +1022,7 @@ innocent code until someone deletes them all.
 
 ---
 
-## 9. Picking up a change days later
+## 10. Picking up a change days later
 
 Nothing about this workflow lives in the chat. A dropped connection, a closed
 laptop, a week off, a context window that filled up — none of it costs you
@@ -637,18 +1067,32 @@ in the commit message anyway, and tracking it records the same intent twice.
 
 ---
 
-## 10. Reference
+## 11. Reference
 
 ### Commands
 
 | Command | Who runs it | What it does |
 |---|---|---|
 | `leo init [--force]` | you, once per repo | installs AGENTS.md, CLAUDE.md, `.leo/` |
+| `leo session` | you | shows the mode and what it declares |
+| `leo session --mode <name>` | you | sets it: coding, debugging, learning, review, exploration |
+| `leo session --report` | either | where this change stands, end to end |
+| `leo install` | you | what is installed and what is not |
+| `leo install <name>` | **you only** | installs one. Shows the command, asks first. |
+| `leo install --all` | **you only** | installs everything this session declares |
+| `leo session --clear` | you | ends it |
 | `leo plan "<name>"` | you, per change | writes the plan skeleton |
 | `leo plan` | either | shows the plan and where it stands |
+| `leo task T1` | agent | gives one plan task its own file and to-do, or shows it |
+| `leo task` | either | every task, its to-do progress and its plan status |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
-| `leo check` | agent | rules, unreviewed hunks, invented IDs, budget, tests |
+| `leo check` | agent | rules, unreviewed hunks, invented IDs, grill, budget, tests — quiet on success |
+| `leo check --verbose` | agent | the same, printing every stage |
 | `leo commit "<subject>"` | **you only** | commits with the manifest in the message |
+| `leo review [<rev>]` | agent | opens cycle two: a review of a landed commit, briefed from the dev cycle |
+| `leo review --close` | **you only** | the gate of cycle two: vocabulary, no open blocker, a real verdict |
+| `leo review --list` | either | every review and where each one stands |
+| `leo build [--out <path>]` | you | compiles one self-contained `leo` to vendor into a repo |
 | `leo help` | either | the short version of this document |
 
 `leo scan main` reviews against a branch instead of `HEAD`; `leo check` then
@@ -662,9 +1106,15 @@ measures against the same base automatically, so the two can never disagree.
 | `CLAUDE.md` | yes | one-line bridge so Claude Code reads AGENTS.md |
 | `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
+| `.leo/integrations/*.sh` | yes | tools your repo adds, one file each |
+| `.leo/tools/*.md` | yes | one per capability: how to use it, what it needs |
 | `.leo/config` | yes | `TEST_CMD` |
+| `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
-| `.leo/manifest.md` | no | current review table |
+| `.leo/tasks/*.md` | no | one per task: "Done when", a to-do, notes |
+| `.leo/manifest.md` | no | current scope table |
+| `.leo/review/STANDARDS.md` | yes | the rubric cycle two argues against — yours to amend |
+| `.leo/reviews/*.md` | **yes** | one review per commit. The only copy there is. |
 
 ### Config
 
@@ -683,7 +1133,361 @@ probably not the right place for it.
 
 ---
 
-## 11. What this does not do
+## 11. Declaring the session
+
+Optional, and it is the one part of leo that does not check anything.
+
+Your agent does not read your code directly. By the time it gets there, several
+other tools may have had a turn: a semantic index deciding which symbols to show
+it, a filter trimming your test output, a compressor shortening what it
+remembers, a ruleset telling it to write less prose. Each is defensible on its
+own. Together they decide what the agent could see when it wrote the change —
+and the diff does not record any of it.
+
+`leo session` records it.
+
+```sh
+leo session --mode debugging
+```
+
+```
+
+leo session
+  Mode: debugging
+
+code intelligence
+  Serena        ON
+  Code graph    ON
+
+efficiency
+  RTK           ON
+  Headroom      OFF
+  Ponytail      OFF
+  Caveman       OFF
+
+practice
+  TDD           ON
+
+engineering controls
+  Plan          ON   always
+  Task IDs      ON   always
+  Manifest      ON   always
+  Rules         ON   always
+  Tests         ON   always
+  Human commit  ON   always
+
+dependencies
+  Serena        MISSING
+      instructions: .leo/tools/serena.md
+      uv tool install -p 3.13 serena-agent
+      claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"
+  Code graph    MISSING
+      instructions: .leo/tools/graph.md
+      curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
+      the installer registers the MCP server with Claude Code itself
+  RTK           MISSING
+      instructions: .leo/tools/rtk.md
+      brew install rtk        (or: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh)
+      rtk init -g             installs the auto-rewrite hook
+  TDD           MISSING
+      instructions: .leo/tools/tdd.md
+      set TEST_CMD in .leo/config — that is the whole install
+        TEST_CMD="go test ./..."   TEST_CMD="npm test"   TEST_CMD="pytest -q"
+
+warn 4 enabled capability(s) not installed — leo works without them
+  install one above, or drop it here: leo session --<name> off
+  leo does not install these. Declaring one does not switch anything on.
+```
+
+### The modes
+
+| Mode | For | What it changes |
+|---|---|---|
+| `coding` | building a planned change | everything on, including the reducers and TDD |
+| `debugging` | finding out why something is wrong | semantic reducers off, TDD on |
+| `learning` | understanding code you did not write | reducers off, code graph on, TDD off |
+| `review` | reading a change someone else made | reducers on, minimisation off, TDD off |
+| `exploration` | surveying unfamiliar ground | reducers off, code graph on, TDD off |
+
+The line that runs through all five: **structural filtering stays on, semantic
+filtering comes off when detail is the point.** Dropping progress bars and
+deduplicating repeated log lines is safe in any mode. A model deciding which
+lines mattered is not, because during debugging the thing that matters is
+routinely the thing that looks like noise.
+
+**TDD is the odd one out**, and deliberately so. It is not a tool mediating
+what the agent sees — it says what order the work is done in, so it gets its
+own `practice` heading. It is ON in `coding` and `debugging` (a bug reproduced
+by a failing test first is the same discipline) and OFF in the three modes that
+write no code. "Installed" means this repo has a `TEST_CMD` in `.leo/config`,
+because without one there is nothing to watch fail.
+
+What it switches is the **order**, and only the order. With `--tdd off` you may
+write the test afterwards — you may not skip it. `leo check` runs `TEST_CMD`
+and records the result in the manifest either way, and no mode can turn that
+off. It is an engineering control, and those are not on this list.
+
+Override any one of them, and the override is marked as yours:
+
+```sh
+leo session --mode debugging --caveman on
+```
+
+Setting a new mode clears your overrides. Carrying a hand-set capability across
+a mode change is exactly how someone ends up debugging with the prose
+compressor still on.
+
+### The tools it can name
+
+Seven capabilities, each with an adapter. An adapter is a file in
+`core/integrations/` that answers three questions and does nothing else:
+
+```sh
+serena_present() { command -v serena >/dev/null 2>&1; }   # installed?
+serena_hint()    { ... }                                  # how to install it
+serena_advice()  { ... }                                  # what to do with it
+```
+
+That is the entire integration surface. No installing, no launching, no
+wrapping, no writing outside `.leo/`. Adding one is the third extension point,
+and `.leo/rules/ADAPTER-CONTRACT.md` checks that a new one is reachable.
+
+| Capability | What it is for | Where it comes from |
+|---|---|---|
+| Serena | symbols, references, semantic edits | MIT, `oraios/serena` |
+| RTK | shell output filtering, structural | Apache-2.0, `rtk-ai/rtk` |
+| Headroom | context compression, semantic | Apache-2.0, `headroomlabs-ai/headroom` |
+| Ponytail | write less code | MIT, `DietrichGebert/ponytail` |
+| Caveman | write less prose | MIT skill, BSL-1.1 engine, `JuliusBrussee/caveman` |
+| Code graph | call chains, blast radius | MIT, `DeusData/codebase-memory-mcp` |
+
+Three things the dependencies block will tell you that are worth knowing before
+you install anything:
+
+- **RTK's hook rewrites the agent's Bash calls, and the agent runs `leo check`
+  through Bash.** A compressed check is a check whose failures the agent may not
+  read — and `leo check` writes the test result it just observed into the
+  manifest, so a truncated run becomes a recorded claim about tests nobody saw.
+  Exclude `leo` in `~/.config/rtk/config.toml`. The RTK adapter prints the
+  three lines you need.
+- **`headroom wrap claude` installs Serena itself**, at user scope in
+  `~/.claude.json`, and leaves it there until you unwrap. If Serena is also on,
+  you have two owners of one MCP entry. leo says so when both are enabled.
+- **RTK and Headroom both reduce what the agent reads**, and `coding` and
+  `review` turn both on. RTK filters shell output structurally; Headroom
+  compresses the context semantically and sees RTK's output already dense, so
+  the second pass buys little on that buffer. `leo session` prints a
+  **conflicts** block whenever both are declared — whether or not either is
+  installed, because that is a property of the policy, not of your machine.
+- **The code graph is the one that took a second try.** GitNexus is the
+  best-known tool here and is PolyForm Noncommercial — most people reading this
+  write code at work, and leo will not default its users into a licence they
+  cannot use. `codebase-memory-mcp` is MIT, a single static binary with no
+  runtime of its own, and its `detect_changes` maps a git diff to the symbols it
+  affects — which is the same question `leo scan` asks of a diff from the other
+  end. A licence is a technical constraint here, not a footnote.
+
+If a tool is not installed, leo says so and carries on. Nothing here can fail a
+check, and `leo check` on a machine with none of them installed behaves exactly
+as it does today — there is a test for that too.
+
+### The instruction files
+
+Every capability leo ships with installs one file into your repository:
+
+```
+.leo/tools/serena.md    graph.md    rtk.md    headroom.md
+           ponytail.md  caveman.md  tdd.md
+```
+
+`leo session` prints the path beside each capability that is ON — whether it is
+installed (you are about to use it) or MISSING (you need to know what it wants
+before you install it). `.leo/workflow.md` tells the agent to read that file
+before using the tool, and to use nothing that is not both ON and installed.
+
+They are **copies**, installed by `leo init` like `.leo/workflow.md` is, so your
+team can amend them. `leo init --force` restores leo's version.
+
+Two of them carry a standing order rather than advice. The code graph is
+**CLI only** — its MCP wire returns `Cannot read properties of undefined` on
+every call, and the CLI returns the same data, so an agent that only knows the
+MCP names concludes the tool is dead. Caveman is **skill only** — leo uses the
+MIT skill and never the cloud gateway, so there is no account, no
+`CAVE_API_KEY`, and nothing to configure.
+
+**Each fact lives in exactly one file.** The prerequisites, the failure
+signatures and the things not to do are in `.leo/tools/<name>.md` and nowhere
+else; the adapter carries the install command and one line at the terminal, and
+this guide carries the index below and no facts at all. `.leo/rules/TOOL-DOC.md`
+enforces the first half of that, and `t/smoke.sh` asserts the second.
+
+### When a tool misbehaves
+
+Symptoms that look like a broken tool and are not. Each one is answered in
+full in the file named — this table deliberately restates none of it:
+
+| What you see | Read |
+|---|---|
+| `Cannot read properties of undefined (reading 'properties')` | `.leo/tools/graph.md` |
+| `passing raw JSON is deprecated`, and flags do not work | `.leo/tools/graph.md` |
+| Caveman stays MISSING after a successful install | `.leo/tools/caveman.md` |
+| `npx caveman` cannot determine an executable | `.leo/tools/caveman.md` |
+| a skill asks you for a gateway URL or an API key | `.leo/tools/caveman.md` |
+| `Unknown language 'javascript'` | `.leo/tools/serena.md` |
+| `health-check` says a language server is not installed | `.leo/tools/serena.md` |
+| `serena project health-check` rejects `--project` | `.leo/tools/serena.md` |
+| `tree command not found` from `rtk tree` | `.leo/tools/rtk.md` |
+| `leo check` output looks truncated | `.leo/tools/rtk.md` |
+| Serena configured twice, at user scope | `.leo/tools/headroom.md` |
+| TDD reads MISSING and you cannot see why | `.leo/tools/tdd.md` |
+
+### Installing them
+
+```sh
+leo install              # what is installed, and what is not
+leo install serena       # one
+leo install --all        # everything this session declares
+```
+
+```
+install serena
+  leo will run this. It is not leo's code, and leo has not audited it:
+
+      uv tool install -p 3.13 serena-agent
+      claude mcp add serena -- serena start-mcp-server --context claude-code --project '/home/you/repo'
+
+run it? [y/N]
+```
+
+Three properties, and they are the reason this is a separate command rather
+than something `leo session` does for you:
+
+- **It shows you the command before it runs it.** Almost everything here is
+  somebody else's installer, fetched over the network, and leo has not read it.
+  You approve the actual string, chosen for your machine — `leo install rtk`
+  prints `brew install rtk` if you have Homebrew and the `curl | sh` line if
+  you do not, rather than offering you a menu of what might happen.
+- **It refuses without a human at a terminal**, exactly as `leo commit` does.
+  An agent that hits this gets told to show you the command and stop. Deciding
+  what goes on your machine is not its call.
+- **Nothing else in leo installs anything.** `leo session` declares,
+  `leo scan` enumerates, `leo check` verifies, and all three work on a machine
+  with none of these tools present. There is a test asserting that none of them
+  ever emits an install command. That is what makes an optional dependency
+  actually optional, and confining it to one command is how it stays true.
+
+`leo install --all` only installs what the current session declares. A tool the
+mode turns off does not get installed, because the mode already decided that.
+
+### Teaching leo a tool it does not know
+
+Six capabilities ship with leo. Yours will not be one of them.
+
+Drop a `<name>.sh` into `.leo/integrations/`. leo sources every `*.sh` there,
+the file name becomes the capability, and `leo session --<name> on` and
+`leo install <name>` start working. No registry, no manifest file, no
+`leo plugin add`. `.leo/integrations/README.md` — installed by `leo init` —
+holds the full template.
+
+```sh
+# .leo/integrations/vitals.sh
+vitals_present() { command -v vitals >/dev/null 2>&1; }          # required
+vitals_hint()    { say "npx --yes skills add chopratejas/vitals"; }  # required
+vitals_install() { say "npx --yes skills add chopratejas/vitals"; }  # optional
+vitals_default() { case "$1" in review|debugging) printf 'on' ;; *) printf 'off' ;; esac; }
+vitals_advice()  { say "rank hotspots by ROI before picking what to fix"; }
+vitals_label()   { printf 'Vitals'; }
+```
+
+```
+extensions
+  Vitals        ON
+```
+
+Two things worth knowing:
+
+- **An adapter must define functions and nothing else.** leo sources it on
+  every command, so anything it does at the top level, it does on every
+  `leo check`. leo parses each repository adapter before loading it and skips
+  one that does not compile — a broken adapter prints a warning and changes
+  nothing else, and there is a test that says so. That guard is the line
+  between an extension point and a plugin framework, and if it ever stops
+  holding, this feature should come back out.
+- **`.leo/integrations/` is committed.** A capability your team depends on
+  arrives with the repository, not in somebody's setup notes. It is also
+  repository code that leo runs, the same as `.leo/config` and the `## Verify`
+  block in every rule — read an unfamiliar repo's `.leo/` before running leo in
+  it, the same as you would read its Makefile.
+
+### The report
+
+```sh
+leo session --report
+```
+
+```
+leo session report
+  Change        session policy
+  Mode          debugging
+  Declared      serena, graph, rtk
+  Not installed serena, rtk
+  Tasks         12 of 14 done  |  in progress: T12
+  Change size   17 file(s), 733 lines
+  Manifest      18 hunk(s), 18 reviewed, 0 serving no task
+  Tests         `bash t/smoke.sh` -- passed, 2026-09-04 05:11 UTC
+  Approval      PENDING — leo commit is yours
+
+  no token figures here on purpose: the tools above measure different
+  things over overlapping buffers, and summing them would be fiction.
+```
+
+Every line is read back from something that already exists — the plan, the
+session file, git, the manifest. Nothing is stored to make this printable, and
+nothing here is a second source of truth.
+
+The last line is the point. `Approval: PENDING` is the only status leo will ever
+print for a change it can see, because deciding a change is done is not
+something a tool gets to do.
+
+### What it does not do
+
+**It does not install anything.** Serena, RTK and the rest are yours, set up
+once, outside leo. leo has no runtime dependency on any of them and never will:
+`git`, `bash` and a POSIX userland is the whole requirement, and a session file
+does not change that. Declaring a capability leo cannot act on says so on the
+line rather than looking enabled.
+
+**It does not gate anything.** `leo check` behaves identically with and without
+a session — there is a test that says so. The one thing a session adds to a
+failing check is a single line naming the mode, because a check failing while
+the session still says `coding` is the moment you realise you have been
+debugging for an hour with the reducers on.
+
+**It cannot turn a control off.** The engineering controls are listed above
+because they are the point of the tool, not because they are settings. There is
+no key for them in `.leo/session` and no flag for them on the command line;
+they live in the code that runs them. An optimisation may change what the agent
+sees. None of them gets to change what leo checks.
+
+**It does not report token savings.** Every tool named above measures a
+different thing against a different denominator, over buffers that overlap.
+Adding those numbers together produces a figure that is simply false, and leo
+would rather report nothing than that.
+
+Where it ends up is the commit message, next to `Assisted-by:`:
+
+```
+Session: debugging (caveman=on)
+Assisted-by: Claude Code
+```
+
+Which is the same bargain as the rest of leo: in six months the diff will not
+tell you the agent was working from compressed output when it wrote that line.
+`git show` will.
+
+---
+
+## 12. What this does not do
 
 Being clear about the edges is what makes the rest trustworthy.
 

@@ -1,2 +1,10 @@
 .leo/plan.md
 .leo/manifest.md
+.leo/session
+.leo/tasks/
+dist/
+t/fixtures/*/
+# ...except the sample task files, which are inputs to the benchmark rather
+# than output from it. Generated fixtures are derived from git history; these
+# are not derivable from anything, and losing them loses a comparison.
+!t/fixtures/tasks/

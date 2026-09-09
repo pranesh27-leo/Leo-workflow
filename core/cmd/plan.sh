@@ -22,22 +22,8 @@ if [ -z "$_name" ]; then
 
   # Where the work stands, so picking up a half-finished change after a day, a
   # reboot or a lost session is one command rather than an archaeology exercise.
-  awk -F'|' '
-    /^\| *T[0-9]/ {
-      id = $2; gsub(/[ \t]/, "", id)
-      st = $6; gsub(/[ \t]/, "", st)
-      total++
-      if (st == "done") { done++ }
-      else if (st == "in-progress") { doing = doing (doing ? "," : "") id }
-      else if (next_ == "") { next_ = id }
-    }
-    END {
-      if (!total) exit
-      printf "\n%d of %d done", done + 0, total
-      if (doing != "") printf "  |  in progress: %s", doing
-      else if (next_ != "") printf "  |  next: %s", next_
-      printf "\n"
-    }' "$PLAN" >&2
+  _st=$(plan_status)
+  [ -n "$_st" ] && printf '\n%s\n' "$_st" >&2
   exit 0
 fi
 
@@ -69,6 +55,8 @@ Created: $(now)
 
 Status: pending -> in-progress -> done.
 Task IDs must be T1, T2, ... — leo and the manifest match on that format.
+
+Then give each row its own file and to-do: \`leo task T1\`.
 
 ## Budget
 est: <n> LOC

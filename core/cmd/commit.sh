@@ -34,7 +34,7 @@ done
 [ -n "$_subject" ] || die 'usage: leo commit "<subject>"'
 
 if [ "$_check" -eq 1 ]; then
-  bash "$LEO_HOME/leo" check || die "checks failed — fix them, or commit --no-check"
+  bash "$LEO_SELF" check || die "checks failed — fix them, or commit --no-check"
 fi
 
 _msg=$(mktemp "${TMPDIR:-/tmp}/leo-msg.XXXXXX")
@@ -59,6 +59,11 @@ trap 'rm -f "$_msg"' EXIT
     warn "no manifest — this commit records what changed but not why"
   fi
 
+  # What the agent could see when it wrote this. A change made with the prose
+  # and context reducers on carries different risk from one made with full
+  # diagnostic output, and six months from now the diff will not say which.
+  _sess=$(session_desc)
+  [ -n "$_sess" ] && printf 'Session: %s\n' "$_sess"
   printf 'Assisted-by: %s\n' "$(who)"
 } > "$_msg"
 
@@ -85,3 +90,39 @@ git commit -F "$_msg"
 rm -f "$MANIFEST"
 ok "committed $(git rev-parse --short HEAD)"
 dim "  read it back: git show --stat HEAD"
+
+# The cheapest thing leo can tell you. An agent session re-reads its whole
+# context on every turn, so cost grows with the square of the turn count:
+# halving a session's length costs about a third of its tokens, not half. A
+# commit is the natural place to stop, and the task files are what make
+# stopping free -- .leo/tasks/ holds the state a new session needs.
+#
+# leo says this here rather than measuring how long the session has run,
+# because it cannot see that without reading one specific agent's transcript
+# format. A commit landing is something every agent's leo can observe.
+dim "  now start a fresh session — .leo/tasks/ carries the state, and a long"
+dim "  session pays for every earlier turn on every later one"
+
+# --- cycle two ------------------------------------------------------------
+# The commit ends the dev cycle; it does not end the work. The change now
+# exists and nothing has read it except the developer who wrote it, which is
+# the one reviewer whose opinion is already spent.
+#
+# leo asks here rather than starting it, for the same reason it does not
+# commit: a review is a session's worth of work, and scheduling it is the
+# developer's call. What it can do is make the ask unmissable and hand over the
+# exact command, at the one moment the change is fresh in everyone's mind.
+#
+# The fresh session above and the review are the same session. That is not a
+# coincidence -- cycle two needs almost nothing this session is carrying, and
+# everything it does need is in the commit message that was just written.
+info ""
+head_ "review it?"
+info "  The change is in, and unreviewed. Cycle two is a separate flow: it"
+info "  reads this commit -- goal, manifest and session are all in the message"
+info "  -- and it cannot edit the code, only find things about it."
+info ""
+dim  "  leo session --mode review"
+dim  "  leo review $(git rev-parse --short HEAD)"
+info ""
+dim  "  It ends at: leo review --close"
