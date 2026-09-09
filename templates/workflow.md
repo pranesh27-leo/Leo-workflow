@@ -4,13 +4,25 @@
 explanation — if you want the reasoning, the worked examples and the sample
 output, that is the human's guide, and it does not overrule anything here.
 
-Seven stages. Do the one you were asked for, and stop there.
+Two cycles. Seven stages in the first, four in the second. Do the one you
+were asked for, and stop there.
 
 ```
+CYCLE ONE -- build it
 grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
            leo plan  leo task  leo task     write it   leo scan     leo check
                      T1        T1 --sub "x"            leo check    leo commit <- theirs
+                                                                        |
+CYCLE TWO -- read it, in a NEW session                                  v
+brief  ->  read  ->  findings  ->  close
+leo review <sha>  the diff vs      leo review --close  <- theirs
+                  STANDARDS.md
 ```
+
+**The two cycles do not overlap.** Cycle one writes code and cannot review it;
+cycle two reads a commit that already exists and cannot edit it. If you are in
+cycle two and you want to change a line, you have found a finding — write it
+down. The fix is a new cycle one, and starting it is the developer's call.
 
 `subtask` is a stage, not a formality. A task that turns out to hold three
 decisions needs all three asked; before this existed they were settled by
@@ -180,7 +192,7 @@ that. It is your call, made at the one moment leo can observe.
 - One task at a time. If you find work the plan does not cover, say so and ask.
   Do not fold it in quietly.
 
-## 4. Review — "scan this", "produce the manifest"
+## 4. Manifest — "scan this", "produce the manifest"
 
 ```sh
 leo scan          # writes .leo/manifest.md, one row per hunk
@@ -239,18 +251,91 @@ Then say what you would want a reviewer to look at first, and wait. Deciding the
 work is done is not your call — you are the least qualified party to make it,
 having just written the thing.
 
-## 6. Resume — "where were we"
+When the commit lands, leo asks for the review. **Do not start it here.** End
+the session, and open cycle two in a new one — stage 6.
+
+## 6. Review — "review it", "start the review", after a commit lands
+
+A separate cycle, in a **new session**, with `leo session --mode review`. It
+begins after `leo commit` prints the ask, and it never runs in the session that
+wrote the code — an agent that has just spent an hour building something is the
+worst available reader of it, and everything it would carry over is the part
+that made it sure.
+
+```sh
+leo review              # the last commit, or: leo review <sha>, leo review a..b
+```
+
+That writes `.leo/reviews/<sha>.md`. It is briefed, not blank: leo assembles
+what cycle one recorded — the goal, the whole manifest, the non-goals, the
+wrong-change signal, and the decisions the grill settled — because a review
+that does not know what was asked for can only check the code against itself,
+and that is how a change that is internally consistent and completely wrong
+passes.
+
+**Read in this order, and do not skip the first.**
+
+1. **What was asked for**, in the review file. If it is thin, the dev cycle was
+   thin, and that is your first finding.
+2. **`.leo/review/STANDARDS.md`** — the rubric, and the only thing a finding
+   here has to clear. It is the repository's, not leo's: read the copy in this
+   repo, because a team amends it.
+3. **The diff** — `git show <sha>` — against both.
+
+The **Signals** section is a grep, not an opinion. It says where to look and
+never what to think; most signals are nothing, and clearing one costs a glance.
+A signal it did not raise is the failure mode, so never treat the list as the
+scope of the review.
+
+Then fill the findings table. One row per finding, severity `blocker` /
+`improvement` / `nit`, status `open` / `fixed` / `waived`. The vocabulary is
+fixed because `leo review --close` reads it.
+
+- **Every finding names the failure it causes.** If you cannot say what breaks
+  or which principle it violates, it is a nit or it is nothing. "I would have
+  written it differently" is not a finding.
+- **Do not re-litigate scope.** The manifest already answered whether each hunk
+  was asked for, and it is quoted in the file. A review that rediscovers scope
+  creep is reading the wrong column.
+- **Do not inflate, and do not deflate.** A reviewer who files improvements as
+  blockers gets ignored on the one that mattered; a reviewer who files a real
+  security defect as a nit to avoid an argument has wasted the whole exercise.
+- **Zero findings is a claim.** If you found nothing, the verdict has to say
+  what you actually read to conclude that.
+- **Anything a linter could catch is not a finding.** It is a missing tool, and
+  it belongs in `.leo/rules/` — see "Writing a rule" below.
+
+Write the verdict — `ship` or `fix-first`, and one line of why — and name the
+2-3 places a human should look first under **Read first**.
+
+Then stop:
+
+```sh
+leo review --close
+```
+
+It refuses on an unreadable severity or status, on any blocker still `open`,
+and on the verdict the template shipped with. **You do not fix the blockers.**
+A fix is a new cycle one — `leo plan "fix: <sha> review"` — and waiving one is
+the developer's, never yours. Say which you would recommend, and wait.
+
+## 7. Resume — "where were we"
 
 ```sh
 leo session --report   # the whole change on one screen, including Next:
 leo plan               # the plan, plus "2 of 5 done | in progress: T3"
 leo task               # every task and how far its to-do got
 git diff HEAD          # the code already written
-cat .leo/manifest.md   # the review table, as far as it got
+cat .leo/manifest.md   # the scope table, as far as it got
+leo review --list      # cycle two: every review, and which are still open
 ```
 
 Continue at the task marked `in-progress`, or the next `pending` one, at the
 first unticked box in its to-do.
+
+An open review is its own thread of work, and it does not block cycle one. Say
+it is open, name what it is waiting on — findings, a verdict, or a fix cycle —
+and let the developer choose which to pick up.
 
 ## Writing a rule
 

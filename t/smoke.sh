@@ -272,6 +272,98 @@ NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
 out=$(NO_COLOR=1 "$LEO" task T1 2>&1)
 has "$out" "Done when" "a second leo task shows the file instead of replacing it"
 
+printf 'cycle two: a review of a commit that has landed\n'
+# The whole cycle, end to end, against a real commit -- opening the review,
+# every way --close refuses, and the close itself.
+cd "$TMP/repo"
+# Start from a clean tree. Everything above left uncommitted work behind, and
+# `leo commit` runs `leo check` -- an inherited budget overshoot would fail the
+# commit and every assertion below it would then be testing the wrong commit.
+rm -f .leo/plan.md .leo/manifest.md
+printf 'TEST_CMD="true"\n' > .leo/config
+git add -A >/dev/null 2>&1 && git commit -qm "clean slate for cycle two" >/dev/null 2>&1
+cat > risky.py <<'RISKY'
+SECRET_KEY = "sk-live-000111222333"
+def run(name):
+    import subprocess
+    subprocess.run("id " + name, shell=True)
+RISKY
+printf '# Plan: risky\n\n## Goal\n\nAdd a runner.\n\n## Non-goals\n\nAuthentication.\n\n| T1 | runner | risky.py | 5 | done |\n\nest: 20 LOC\n' > .leo/plan.md
+mkdir -p .leo/tasks
+printf '# T1: runner\n\n## Grill\n\nShell out because the API has no binding.\n\n## To-do\n\n- [x] done\n' > .leo/tasks/T1.md
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | asked for | it breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+LEO_YES=1 NO_COLOR=1 "$LEO" commit "feat: runner" >/dev/null 2>&1
+sha=$(git rev-parse --short HEAD)
+
+out=$(NO_COLOR=1 "$LEO" review "$sha" 2>&1)
+has "$out" "opened .leo/reviews/$sha.md" "leo review opens a review of a commit"
+[ -f ".leo/reviews/$sha.md" ] && ok "the review is a file" || bad "the review is a file"
+r=$(cat ".leo/reviews/$sha.md")
+
+# Briefed, not blank. Each of these comes from a different place in cycle one,
+# and any one of them going missing is silent.
+has "$r" "feat: runner"        "the review names the commit it reviews"
+has "$r" "Add a runner"        "the goal comes across from the commit message"
+has "$r" "asked for"           "the manifest comes across from the commit message"
+has "$r" "Authentication"      "the non-goals come across from the plan"
+has "$r" "no binding"          "what the grill settled comes across from the task file"
+
+# Signals. These are greps, and a grep that silently stops matching is the
+# failure nobody notices -- so one of them is asserted by line number.
+has "$r" "risky.py:1"          "a secret-shaped literal is flagged, with its line"
+has "$r" "shell=True"          "an interpreter call is flagged"
+has "$r" "0 test file"         "a change with no test file changed says so"
+
+# `leo review` must never be able to touch the code it reviews.
+git diff --quiet HEAD && ok "leo review changes nothing in the worktree" \
+                       || bad "leo review changes nothing in the worktree"
+
+# Opening it twice shows it rather than replacing what was written.
+printf 'MARKER-NOT-CLOBBERED\n' >> ".leo/reviews/$sha.md"
+NO_COLOR=1 "$LEO" review "$sha" >/dev/null 2>&1
+has "$(cat ".leo/reviews/$sha.md")" "MARKER-NOT-CLOBBERED" \
+  "a second leo review shows the file instead of replacing it"
+
+printf 'cycle two refuses in exactly three ways\n'
+f=".leo/reviews/$sha.md"
+close() { NO_COLOR=1 "$LEO" review --close 2>&1; }
+
+# 1. the verdict is still the template's placeholder
+out=$(close || true)
+has "$out" "states no verdict" "refuses while the verdict is the placeholder"
+
+# 2. a severity or status outside the vocabulary. The gate reads two columns of
+# a markdown table, and a word it cannot parse must fail loudly, not silently.
+awk '/^\|---\|/{print; print "| 1 | critical | `risky.py:1` | key | it is live | nope |"; next}1' "$f" > "$TMP/f" && mv "$TMP/f" "$f"
+out=$(close || true)
+has "$out" "is not blocker/improvement/nit" "refuses a severity it cannot parse"
+awk '/^\| 1 \|/{print "| 1 | blocker | `risky.py:1` | live key committed | it must be rotated, not deleted | nope |"; next}1' "$f" > "$TMP/f" && mv "$TMP/f" "$f"
+out=$(close || true)
+has "$out" "is not open/fixed/waived" "refuses a status it cannot parse"
+
+# 3. a blocker nobody dispositioned
+awk '/^\| 1 \|/{sub(/\| nope \|$/, "| open |")}1' "$f" > "$TMP/f" && mv "$TMP/f" "$f"
+sed 's/^Verdict: <.*/Verdict: fix-first -- read risky.py against the standards./' "$f" > "$TMP/f" && mv "$TMP/f" "$f"
+out=$(close || true)
+has "$out" "blocker(s) still open" "refuses while a blocker is open"
+has "$out" "a fix is a dev cycle" "names the hand-off back to cycle one"
+rc=0; NO_COLOR=1 "$LEO" review --close >/dev/null 2>&1 || rc=$?
+[ "$rc" = 1 ] && ok "an open review exits 1" || bad "an open review exited $rc, wanted 1"
+
+printf 'cycle two closes, and stays closed\n'
+awk '/^\| 1 \|/{sub(/\| open \|$/, "| waived |")}1' "$f" > "$TMP/f" && mv "$TMP/f" "$f"
+out=$(close)
+has "$out" "closes" "closes once every finding is dispositioned"
+has "$out" "waived" "a waived blocker is reported, not hidden"
+has "$(cat "$f")" "^Closed: 2" "closing stamps the file"
+# The bug this pair exists for: state and target were once the same predicate,
+# so a review that met every closing condition became invisible to --close and
+# could never be closed at all.
+has "$(NO_COLOR=1 "$LEO" review --list 2>&1)" "closed" "a closed review lists as closed"
+out=$(close || true)
+has "$out" "no open review" "a closed review is not offered again"
+
 printf 'the awkward inputs\n'
 # awk runs END on `exit`, so a rule that prints and exits mid-file prints a
 # SECOND time from END. task_current did exactly that: a pending task before an
@@ -749,7 +841,8 @@ n_grill=$(grep -c '^grill$' "$d" || true)
 # README is where someone looks first, so the loop it prints must be the loop.
 r="$LEOHOME/README.md"
 has "$(cat "$r")" "subtask" "README names the subtask stage"
-for c in "leo plan" "leo task" "leo scan" "leo check" "leo commit" "leo build"; do
+for c in "leo plan" "leo task" "leo scan" "leo check" "leo commit" "leo build" \
+         "leo review"; do
   has "$(cat "$r")" "$c" "README names $c"
 done
 printf '\n%s passed, %s failed\n' "$pass" "$fail"

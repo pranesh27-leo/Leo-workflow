@@ -14,6 +14,9 @@ audit is the one whose findings could change everything after it.
 
 | C6 | Manifest staleness is undetectable       | Found 2026-09-09 while benchmarking                    | pending     |
 | C7 | Spend fewer turns; quiet check           | Cost is quadratic in turns, not linear in bytes        | built       |
+| C8 | Take the cap off the grill               | "3-10 questions" contradicted "no cap" in one section  | done        |
+| C9 | Make the documents describe the tool     | Five changes landed; the documents did not keep up     | done        |
+| C10| A review cycle: read a commit, never fix  | The author is the one reviewer whose opinion is spent  | built       |
 
 C6, found the hard way: `leo scan` refuses to overwrite an existing manifest
 ("finish or delete it first"), which is right. But `leo check` then reports

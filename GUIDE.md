@@ -10,12 +10,13 @@ understand a year later. No prior knowledge assumed.
 3. [Install](#3-install)
 4. [Set up a repository](#4-set-up-a-repository)
 5. [A complete change, step by step](#5-a-complete-change-step-by-step)
-6. [When check complains](#6-when-check-complains)
-7. [Reading the record later](#7-reading-the-record-later)
-8. [Writing your first rule](#8-writing-your-first-rule)
-9. [Picking up a change days later](#9-picking-up-a-change-days-later)
-10. [Reference](#10-reference)
-11. [What this does not do](#11-what-this-does-not-do)
+6. [The review cycle](#6-the-review-cycle)
+7. [When check complains](#7-when-check-complains)
+8. [Reading the record later](#8-reading-the-record-later)
+9. [Writing your first rule](#9-writing-your-first-rule)
+10. [Picking up a change days later](#10-picking-up-a-change-days-later)
+11. [Reference](#11-reference)
+12. [What this does not do](#12-what-this-does-not-do)
 
 ---
 
@@ -46,21 +47,31 @@ every hunk it wrote, and put that accounting where git will keep it.**
 
 ## 2. The mental model
 
-Seven stages, and the command for each:
+Two cycles. Seven stages in the first, four in the second:
 
 ```
+CYCLE ONE -- build it
 grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
            leo plan  leo task  leo task     write it  leo scan     leo commit
                      T1        T1 --sub "x"           leo check    <- yours
+                                                                       |
+CYCLE TWO -- read it, in a new session                                 v
+brief  ->  read  ->  findings  ->  close
+leo review <sha>   the diff vs     leo review --close  <- yours
+                   STANDARDS.md
 ```
+
+Cycle one writes code and cannot review it. Cycle two reads a commit that
+already exists and cannot edit it — section 6.
 
 Do the stage you were asked for and stop there. If you are asked for something
 two stages ahead — code with no plan, a commit with no manifest — the agent is
 told to name the stage being skipped and wait, rather than quietly doing it in
 passing. You may well have a reason; it is yours to give.
 
-Two things block, and only two: a hunk that serves no task, and a task that
-was never grilled. Everything else leo writes is a working note.
+Two things block in cycle one, and only two: a hunk that serves no task, and a
+task that was never grilled. One thing blocks in cycle two: a `blocker` finding
+nobody has fixed or waived. Everything else leo writes is a working note.
 
 Three files hold everything. All three are plain markdown you can read and edit.
 
@@ -69,6 +80,7 @@ Three files hold everything. All three are plain markdown you can read and edit.
 | `.leo/plan.md` | what the change is *allowed* to be | you and the agent, before any code |
 | `.leo/manifest.md` | one row per hunk: which task it serves, why, what breaks without it | the agent, after the code |
 | commit message | the manifest, permanently | `leo commit`, run by you |
+| `.leo/reviews/<sha>.md` | one row per finding against a commit that landed | the reviewer, in cycle two |
 
 And one word you need: a **hunk** is a contiguous block of changed lines that
 git reports as one unit. A 500-line change is typically 15–25 hunks. That is
@@ -389,7 +401,7 @@ Status column along: `pending` → `in-progress` → `done`, and ticks the boxes
 the task file as it goes.
 
 Nothing in leo enforces this one — it is discipline, specified in
-`.leo/workflow.md`. What you get for it is section 9: that column is the entire
+`.leo/workflow.md`. What you get for it is section 10: that column is the entire
 memory of a long change, and it is the difference between resuming a dropped
 session in ten seconds and reconstructing it from the diff.
 
@@ -606,7 +618,234 @@ session's length costs a third of its tokens rather than half. The cheapest
 thing you can do is finish a task, commit, and start a fresh session —
 `.leo/tasks/` exists so that costs you nothing.
 
-## 6. When check complains
+## 6. The review cycle
+
+The commit ends cycle one. It does not end the work: the change now exists and
+nothing has read it except the developer who wrote it, which is the one reviewer
+whose opinion is already spent.
+
+So `leo commit` asks:
+
+```
+ok   committed 0a79621
+  read it back: git show --stat HEAD
+  now start a fresh session — .leo/tasks/ carries the state, and a long
+  session pays for every earlier turn on every later one
+
+review it?
+  The change is in, and unreviewed. Cycle two is a separate flow: it
+  reads this commit -- goal, manifest and session are all in the message
+  -- and it cannot edit the code, only find things about it.
+
+  leo session --mode review
+  leo review 0a79621
+
+  It ends at: leo review --close
+```
+
+It asks rather than starting, for the same reason it does not commit: a review
+is a session's worth of work, and scheduling it is yours.
+
+### Why it is a separate cycle
+
+Two reasons, and neither is process for its own sake.
+
+**The reviewer cannot be the author.** Cycle two cannot edit the code — there is
+no stage in it that writes to your source tree. An agent that can fix what it
+finds stops reporting and starts finishing, and you lose the one artifact you
+wanted: a list of what is wrong, written down, before anyone decided what to do
+about it.
+
+**A fresh session is a better reader.** An agent that spent an hour building
+something carries every reason it was sure. Cycle two needs almost none of that
+context, and everything it does need is in the commit message cycle one wrote.
+
+### Opening one
+
+```sh
+leo session --mode review
+leo review              # the last commit; or leo review <sha>, or leo review main..HEAD
+```
+
+```
+ok   opened .leo/reviews/0a79621.md — 0a79621, 1 file(s)
+
+Read, in this order:
+  1. the "What was asked for" section — what the dev cycle recorded
+  2. .leo/review/STANDARDS.md — what a finding here has to clear
+  3. git show 0a79621 — the code, against both
+
+Then fill the findings table, write the verdict, and: leo review --close
+You cannot fix anything from here. A fix is a new dev cycle.
+```
+
+The file it writes is **briefed, not blank**. This is the part that makes cycle
+two worth having: leo reassembles what cycle one recorded, because a reviewer
+who does not know what was asked for can only check the code against itself —
+and that is how a change that is internally consistent and completely wrong
+passes.
+
+Everything below is assembled by the shell, from the commit message `leo commit`
+wrote and the plan and task files still on disk:
+
+```markdown
+Commit:  0a79621  (Dev, 2026-09-09)
+Subject: auth: check passwords
+Goal:    Add password checking to the API.
+Written: Claude Code
+
+### The manifest this commit was made with
+
+| # | Hunk | Delta | Task | Why | If deleted |
+| NEW | `auth.py` | +13 | T1 | the plan asked for password checking | auth breaks |
+
+Budget: est 12 LOC / actual 13 LOC
+Tests: `true` -- passed, 2026-09-09 04:12 UTC
+
+### From .leo/plan.md — "auth"
+
+Non-goals — a hunk that serves one of these is a finding:
+
+  Session management. Rate limiting.
+
+Wrong-change signal:
+
+  If auth needs a new dependency, this is the wrong change.
+
+### What the grill settled — from .leo/tasks/
+
+T1:
+  Chose md5 because the legacy table stores md5. Rejected bcrypt: needs a migration.
+  Accepted cost: no constant-time compare in v1.
+```
+
+That last block is the one you cannot get anywhere else. The diff shows md5; it
+does not show that md5 was *argued for and accepted*, with a reason. A reviewer
+without it files "md5 is weak" as a blocker, the author replies "we discussed
+that", and the review has cost two people an afternoon to rediscover a decision
+that was already written down.
+
+### Signals
+
+Then a section the shell greps out of the diff:
+
+```markdown
+### Secrets — a literal assigned to a credential-shaped name
+
+  auth.py:3  API_KEY = "sk-live-9f83aa21bb0c"
+
+### Untrusted input reaching an interpreter
+
+  auth.py:10  subprocess.run("id -u " + user.name, shell=True)
+
+### Authentication, authorisation and crypto
+
+  auth.py:7  if hashlib.md5(pw.encode()).hexdigest() == user.pwhash:
+
+### Errors that may be going nowhere
+
+  auth.py:11  except:
+
+### Tests
+
+1 source file(s) changed, 0 test file(s) changed.
+```
+
+**A signal is not a finding.** It is a grep with a line number, it costs no
+tokens, and it says where to look and never what to think. Most will be nothing;
+clearing one costs a glance. The failure mode is a signal leo *did not* raise —
+so the list is never the scope of the review.
+
+### Findings, and the two words that matter
+
+The reviewer fills one row per finding:
+
+```markdown
+| # | Severity | Where | Finding | Why it matters | Status |
+|---|----------|-------|---------|----------------|--------|
+| 1 | blocker | `auth.py:3` | live API key committed | anyone with repo read access has the key; it must be rotated, not just deleted | open |
+| 2 | improvement | `auth.py:10` | shell=True with an interpolated username | command injection if a username can contain a space or a semicolon | open |
+
+Verdict: fix-first — read auth.py in full against the standards; the md5
+choice is grilled and accepted, the key is not.
+```
+
+Severity is `blocker`, `improvement` or `nit`. Status is `open`, `fixed` or
+`waived`. The vocabulary is closed because `leo review --close` reads those two
+columns and nothing else.
+
+What a finding has to clear is `.leo/review/STANDARDS.md` — installed into your
+repository by `leo init`, and yours to amend. It is a rubric, not a checklist:
+design, correctness, security, tests, maintainability, performance,
+dependencies, in that order, with the rule that every finding names the failure
+it causes. "I would have written it differently" is not a finding.
+
+### Closing it
+
+```sh
+leo review --close
+```
+
+It refuses three ways, and only three:
+
+```
+ERR  the findings table does not read
+  row 1: severity "critical" is not blocker/improvement/nit
+```
+
+```
+ERR  1 blocker(s) still open — fix them in a new dev cycle, or waive them
+  `auth.py:3`  live API key committed
+  a fix is a dev cycle, not an edit: leo plan "fix: 0a79621 review"
+  waiving one is the developer's call, and it stays in the file
+```
+
+```
+ERR  the review states no verdict — say ship or fix-first, and why
+```
+
+The third is the same test as the manifest's `Tests:` line: a conclusion nobody
+typed is not a conclusion, and the placeholder the template shipped with is how
+you tell. Zero findings is allowed — it is a claim, and the verdict has to say
+what was read to support it.
+
+When it passes:
+
+```
+ok   review 0a79621 closes — 2 finding(s), 1 blocker(s), 0 waived
+  1 open improvement(s)/nit(s) — a dev cycle when you want them, not now
+
+The review is a record of a commit that already exists, so unlike the
+plan and the manifest it has nowhere to live but the repository:
+  git add .leo/reviews/0a79621.md && git commit -m "review: 0a79621 — fix-first, 2 finding(s)"
+```
+
+### Where the record lives, and why here
+
+`.leo/plan.md` and `.leo/manifest.md` are gitignored, because both end up
+*inside* the commit message they describe. A review cannot: it is written about
+a commit whose message was sealed before the review existed.
+
+So `.leo/reviews/*.md` is the one thing under `.leo/` that is **tracked**. It is
+the only copy of cycle two there will ever be, and a rule
+(`.leo/rules/REVIEW-TRACKED.md`) exists to stop somebody tidying it into
+`.gitignore` — which would delete every review in every repository and fail no
+test anywhere.
+
+### Handing back
+
+A blocker leaves the table two ways, and both are yours:
+
+- **fixed** — start a cycle one for it: `leo plan "fix: 0a79621 review"`. The
+  fix gets a plan, tasks, a grill, a manifest and a commit, exactly like any
+  other change. Then name that commit on the review's `Fixed-by:` line.
+- **waived** — you accept it. The row stays in the file with its reason, where
+  the next person reads it.
+
+The agent recommends; it does not choose. Having found the problem is not the
+same as being entitled to decide what it is worth.
+
+## 7. When check complains
 
 Four failures, what each means, and what to do.
 
@@ -662,7 +901,7 @@ A mistake you have already fixed once has come back. Section 8.
 
 ---
 
-## 7. Reading the record later
+## 8. Reading the record later
 
 This is what all of it was for. Six months on, `git log`:
 
@@ -717,7 +956,7 @@ and `git blame` are already in your fingers.
 
 ---
 
-## 8. Writing your first rule
+## 9. Writing your first rule
 
 Rules are how a lesson outlives the conversation that learned it. Both you and
 your agent can write them — `.leo/workflow.md` tells the agent when to reach for
@@ -783,7 +1022,7 @@ innocent code until someone deletes them all.
 
 ---
 
-## 9. Picking up a change days later
+## 10. Picking up a change days later
 
 Nothing about this workflow lives in the chat. A dropped connection, a closed
 laptop, a week off, a context window that filled up — none of it costs you
@@ -828,7 +1067,7 @@ in the commit message anyway, and tracking it records the same intent twice.
 
 ---
 
-## 10. Reference
+## 11. Reference
 
 ### Commands
 
@@ -850,6 +1089,9 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo check` | agent | rules, unreviewed hunks, invented IDs, grill, budget, tests — quiet on success |
 | `leo check --verbose` | agent | the same, printing every stage |
 | `leo commit "<subject>"` | **you only** | commits with the manifest in the message |
+| `leo review [<rev>]` | agent | opens cycle two: a review of a landed commit, briefed from the dev cycle |
+| `leo review --close` | **you only** | the gate of cycle two: vocabulary, no open blocker, a real verdict |
+| `leo review --list` | either | every review and where each one stands |
 | `leo build [--out <path>]` | you | compiles one self-contained `leo` to vendor into a repo |
 | `leo help` | either | the short version of this document |
 
@@ -870,7 +1112,9 @@ measures against the same base automatically, so the two can never disagree.
 | `.leo/session` | no | current mode, if you set one |
 | `.leo/plan.md` | no | current change |
 | `.leo/tasks/*.md` | no | one per task: "Done when", a to-do, notes |
-| `.leo/manifest.md` | no | current review table |
+| `.leo/manifest.md` | no | current scope table |
+| `.leo/review/STANDARDS.md` | yes | the rubric cycle two argues against — yours to amend |
+| `.leo/reviews/*.md` | **yes** | one review per commit. The only copy there is. |
 
 ### Config
 

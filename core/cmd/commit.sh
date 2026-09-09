@@ -102,3 +102,27 @@ dim "  read it back: git show --stat HEAD"
 # format. A commit landing is something every agent's leo can observe.
 dim "  now start a fresh session — .leo/tasks/ carries the state, and a long"
 dim "  session pays for every earlier turn on every later one"
+
+# --- cycle two ------------------------------------------------------------
+# The commit ends the dev cycle; it does not end the work. The change now
+# exists and nothing has read it except the developer who wrote it, which is
+# the one reviewer whose opinion is already spent.
+#
+# leo asks here rather than starting it, for the same reason it does not
+# commit: a review is a session's worth of work, and scheduling it is the
+# developer's call. What it can do is make the ask unmissable and hand over the
+# exact command, at the one moment the change is fresh in everyone's mind.
+#
+# The fresh session above and the review are the same session. That is not a
+# coincidence -- cycle two needs almost nothing this session is carrying, and
+# everything it does need is in the commit message that was just written.
+info ""
+head_ "review it?"
+info "  The change is in, and unreviewed. Cycle two is a separate flow: it"
+info "  reads this commit -- goal, manifest and session are all in the message"
+info "  -- and it cannot edit the code, only find things about it."
+info ""
+dim  "  leo session --mode review"
+dim  "  leo review $(git rev-parse --short HEAD)"
+info ""
+dim  "  It ends at: leo review --close"

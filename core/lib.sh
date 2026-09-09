@@ -281,6 +281,104 @@ who() {
   fi
 }
 
+# ------------------------------------------------------------ reviews ----
+# Cycle two. `.leo/reviews/<sha>.md` is one review of one commit that has
+# already landed, and unlike the plan and the manifest it is *tracked*: those
+# two end up inside the commit message they describe, and a review of an
+# existing commit has nowhere to go but the repository. A record with no home
+# is a record nobody reads.
+#
+# The findings table is the only machine-readable part, and only two of its
+# columns are read: severity and status. Both vocabularies are closed, which
+# is what `leo review --close` checks first -- a status leo cannot parse is a
+# finding nobody dispositioned, and it must not pass by being unreadable.
+REVIEWS="$LEO_DIR/reviews"
+
+# review_count <file> [severity] [status] — findings matching, or all of them.
+review_count() {
+  [ -f "$1" ] || { printf 0; return 0; }
+  awk -F'|' -v ws="${2:-}" -v wt="${3:-}" '
+    /^\| *[0-9]/ {
+      s = $3; gsub(/[ \t`]/, "", s)
+      t = $7; gsub(/[ \t`]/, "", t)
+      if (ws != "" && s != ws) next
+      if (wt != "" && t != wt) next
+      n++
+    }
+    END { print n + 0 }' "$1"
+}
+
+review_verdict() {
+  [ -f "$1" ] || return 0
+  sed -n 's/^Verdict: *//p' "$1" | head -1
+}
+
+# review_subject <file> — the reviewed commit's subject, off the title line.
+# awk rather than sed: the separator is an em dash, and byte-wise sed classes
+# do not reliably match one.
+review_subject() {
+  [ -f "$1" ] || return 0
+  awk 'NR == 1 {
+         sub(/^# Review: */, "")
+         i = index($0, " "); if (i) $0 = substr($0, i + 1)
+         sub(/^[^A-Za-z0-9]*/, "")
+         print; exit
+       }' "$1"
+}
+
+# review_closed <file> — the stamp `--close` writes, or empty/"-" while open.
+review_closed() {
+  [ -f "$1" ] || return 0
+  sed -n 's/^Closed: *//p' "$1" | head -1
+}
+
+# review_state <file> — closed once stamped; ready when the findings are all
+# dispositioned and the verdict is real; open until then.
+#
+# "Ready" and "closed" are deliberately two things. They were one at first,
+# derived from the same content, and the result was a review that could never
+# be closed: the moment it satisfied the conditions it stopped looking like
+# something waiting to be closed, and `--close` could no longer find it. The
+# stamp is the difference between "nothing is outstanding" and "someone said
+# so", which is the same difference the whole tool is built on.
+review_state() {
+  [ -f "$1" ] || { printf 'missing'; return 0; }
+  case "$(review_closed "$1")" in
+    ""|-|*"<"*) ;;
+    *) printf 'closed'; return 0 ;;
+  esac
+  case "$(review_verdict "$1")" in
+    ""|*"<"*) printf 'open'; return 0 ;;
+  esac
+  if [ "$(review_count "$1" blocker open)" -gt 0 ]; then printf 'open'; return 0; fi
+  printf 'ready'
+}
+review_pick() {
+  if [ -n "${1:-}" ]; then
+    _p="$REVIEWS/$1.md"
+    if [ ! -f "$_p" ]; then
+      _s=$(git rev-parse --short "$1" 2>/dev/null || true)
+      [ -n "$_s" ] && _p="$REVIEWS/$_s.md"
+    fi
+    [ -f "$_p" ] || { err "no review for $1 — open one: leo review $1"; return 1; }
+    printf '%s' "$_p"; return 0
+  fi
+  _open=""
+  for _r in "$REVIEWS"/*.md; do
+    [ -f "$_r" ] || continue
+    [ "$(review_state "$_r")" = "closed" ] || _open="$_open $_r"
+  done
+  # shellcheck disable=SC2086
+  set -- $_open
+  case $# in
+    0) err "no open review — open one: leo review <rev>"; return 1 ;;
+    1) printf '%s' "$1"; return 0 ;;
+    *) err "$# reviews are open — name one: leo review --close <rev>"
+       for _r in "$@"; do dim "  $(basename "$_r" .md)"; done
+       return 1 ;;
+  esac
+}
+
 # ------------------------------------------------------------ session ----
 # .leo/session declares what kind of work this change is, and which agent
 # capabilities that kind of work wants. Plain `KEY=value` shell, like

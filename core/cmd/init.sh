@@ -27,7 +27,7 @@ put() { # put <template> <destination>
   fi
 }
 
-mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools .leo/skills
+mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools .leo/skills .leo/reviews
 
 put AGENTS.md      AGENTS.md
 put CLAUDE.md      CLAUDE.md
@@ -37,6 +37,13 @@ put CLAUDE.md      CLAUDE.md
 put CONTEXT.md     CONTEXT.md
 put workflow.md    .leo/workflow.md
 put rule.md        .leo/rules/EXAMPLE.md
+# The rubric cycle two argues against. Installed rather than read from
+# $LEO_HOME for the same reason .leo/workflow.md is a copy: a team amends its
+# own standards, and a review that cites a file the repo cannot show is not
+# citing anything. .leo/reviews/ is deliberately NOT gitignored -- the plan and
+# the manifest end up inside the commit message they describe, and a review of
+# a commit that already exists has nowhere to live but the repository.
+put review/STANDARDS.md .leo/review/STANDARDS.md
 # A README rather than a sample adapter: leo sources every *.sh in that
 # directory, so a template that shipped as one would load itself and show up
 # as a capability nobody asked for.
@@ -88,3 +95,4 @@ ok "ready"
 dim "  1. fill in AGENTS.md — delete every placeholder you do not need"
 dim "  2. set TEST_CMD in .leo/config"
 dim "  3. start a change: leo plan \"<name>\""
+dim "  4. make .leo/review/STANDARDS.md yours — it is what cycle two argues against"

@@ -6,7 +6,7 @@ It exists to answer one question: **when 500 lines arrive that you did not
 type, how do you know they are the right 500 lines — and how do you debug them
 at 3am without an AI?**
 
-## The six ideas
+## The seven ideas
 
 1. **The agent grills you before it plans.** It asks questions in rounds — each
    with a recommended default — and stops after each round instead of running
@@ -45,6 +45,17 @@ at 3am without an AI?**
    reads only when the session has that tool on, so what a tool needs and how
    it actually fails is written down once instead of rediscovered.
 
+7. **The author does not review the change.** A commit ends the first cycle and
+   starts a second one, in a new session: `leo review` opens a review of the
+   commit that just landed and *cannot edit your code* — there is no stage in it
+   that writes to the source tree. It arrives briefed rather than blank, because
+   `leo commit` already put the goal, the whole manifest and the session into
+   the commit message, and the plan and task files still hold the non-goals and
+   the decisions the grill settled. A reviewer who does not know what was asked
+   for can only check the code against itself, which is how a change that is
+   internally consistent and completely wrong passes. A `blocker` holds the
+   review open until you fix it — as a new first cycle — or waive it in writing.
+
 **New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
 complete change, with real output at every step.
 
@@ -72,6 +83,13 @@ leo scan                        # split the diff into hunks
                                 # ...the agent fills in Task / Why / If deleted
 leo check                       # rules, unreviewed hunks, budget, tests
 leo commit "api: rate limit"    # you run this one. It refuses without a tty.
+
+# then, in a NEW session — cycle two, which the commit above asks for
+leo session --mode review
+leo review                      # briefed from the commit cycle one just wrote
+                                # ...the agent files findings against
+                                #    .leo/review/STANDARDS.md. It cannot edit code.
+leo review --close              # yours too. No open blocker, and a real verdict.
 ```
 
 ## Picking up a change days later
@@ -98,6 +116,10 @@ core/lib.sh        every shared helper, one screen
 core/cmd/*.sh      one file per command, readable top to bottom
 core/integrations/ the tools leo ships with: detect, hint, install, advise
 templates/         what `leo init` copies into a repository
+.claude/           a Claude Code front door for cycle two: a `/review` command
+                   and a read-only reviewer subagent. Copy them into your own
+                   repo or ignore them — leo itself is agent-agnostic, and
+                   nothing in `core/` knows they exist.
 ```
 
 ## Extending it
@@ -119,10 +141,11 @@ must be able to read the whole thing in one sitting.
 
 ## Using it, day to day
 
-The loop, and the command for each stage:
+Two cycles, and the command for each stage:
 
 ```
-grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+CYCLE ONE  grill -> plan -> task -> subtask -> build -> manifest -> commit
+CYCLE TWO  brief -> read -> findings -> close        (a new session, after the commit)
 ```
 
 ```sh
@@ -149,12 +172,29 @@ leo check --verbose                # ...showing every stage
 leo commit "api: per-key rate limiting"
 ```
 
+Then cycle two, which `leo commit` asks for:
+
+```sh
+# 8. brief — a new session, and a review of the commit that just landed
+leo session --mode review
+leo review                         # or: leo review <sha>, leo review main..HEAD
+
+# 9. read — the diff against .leo/review/STANDARDS.md, briefed with what
+#    cycle one recorded: goal, manifest, non-goals, and what the grill settled
+
+# 10. findings — one row each: severity, where, what breaks, status
+
+# 11. close — yours, like the commit
+leo review --close
+```
+
 Then **start a fresh session for the next task.** An agent re-reads its whole
 context every turn, so a session's cost grows with the square of its length —
 `.leo/tasks/` exists so stopping costs you nothing.
 
-Two things block: a hunk with no task, and a task with no grill. Everything
-else is a working note.
+Two things block in cycle one: a hunk with no task, and a task with no grill.
+One blocks in cycle two: a `blocker` finding nobody has fixed or waived.
+Everything else is a working note.
 
 ## Vendoring it into your repo
 
