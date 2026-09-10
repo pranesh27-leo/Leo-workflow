@@ -35,3 +35,7 @@ ponytail_install() {
   say "printf '\\n' >> AGENTS.md"
   say "curl -fsSL https://raw.githubusercontent.com/DietrichGebert/ponytail/main/AGENTS.md >> AGENTS.md"
 }
+
+# Ambient: this wraps the session rather than being called at a moment, so
+# `_present` is the evidence and the agent is never asked to announce it.
+ponytail_kind() { printf 'ambient'; }

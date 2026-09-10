@@ -30,23 +30,58 @@ need_repo() {
 # untracked — new files git can see, honouring .gitignore.
 untracked() { git ls-files --others --exclude-standard 2>/dev/null; }
 
-# changed <base> — every file that differs from <base>, plus untracked ones.
+# base_index <base> — a scratch git index seeded from <base>, printed as a
+# path. The caller deletes it.
+#
+# Why leo does not just use the real index: a `leo record` base is a tree
+# object holding files that are still untracked in the developer's index, and
+# `git diff <tree>` reports those as *deleted* -- the tree has them, the index
+# does not. The first fix for that was for `leo record` to `git add -A`, which
+# made the diff right and the repository wrong: an ordinary `git commit` after
+# a record swept the whole recorded change into it, under that commit's
+# message, and `leo commit` then had nothing left to land.
+#
+# Seeding a throwaway index from the base instead gets the same correct diff
+# and never touches what the developer has staged. The index is theirs.
+base_index() {
+  _i=$(mktemp "${TMPDIR:-/tmp}/leo-idx.XXXXXX")
+  rm -f "$_i"
+  GIT_INDEX_FILE="$_i" git read-tree "${1:-HEAD}" 2>/dev/null || true
+  printf '%s' "$_i"
+}
+
+# changed <base> — every file that differs from <base>, plus files that did not
+# exist in it at all.
 changed() {
-  { git diff --name-only "${1:-HEAD}" 2>/dev/null
-    untracked
+  _b="${1:-HEAD}"
+  _idx=$(base_index "$_b")
+  { GIT_INDEX_FILE="$_idx" git diff --name-only "$_b" 2>/dev/null
+    GIT_INDEX_FILE="$_idx" untracked
   } | sed '/^$/d' | sort -u
+  rm -f "$_idx"
 }
 
 # is_text <file> — false for binaries, so build output never gets line-counted.
 # grep -I reports no match for a binary file on both GNU and BSD.
-is_text() { grep -Iq . "$1" 2>/dev/null; }
+# is_text <file> — is this something a human reads, and leo should count lines
+# of? `grep -I` is the binary test; the pattern is what decides the edge cases.
+#
+# It was `grep -Iq .`, and `.` needs one character on some line. A zero-byte
+# file therefore matched nothing and was reported as binary -- which meant
+# every empty `__init__.py` in a Python project arrived in the manifest as
+# `binary`, with no line count and nothing to review. A file of only blank
+# lines had the same problem. The empty pattern matches any line at all, and
+# the -s guard covers the file that has no lines to match.
+is_text() { [ ! -s "$1" ] || grep -Iq '' "$1" 2>/dev/null; }
 
 # lines_changed <base> — added + removed across tracked and untracked files.
 # git reports binary diffs as "-", which the awk drops; untracked binaries are
 # dropped by is_text before they ever reach it.
 lines_changed() {
-  { git diff --numstat "${1:-HEAD}" 2>/dev/null
-    untracked | while IFS= read -r f; do
+  _b="${1:-HEAD}"
+  _idx=$(base_index "$_b")
+  { GIT_INDEX_FILE="$_idx" git diff --numstat "$_b" 2>/dev/null
+    GIT_INDEX_FILE="$_idx" untracked | while IFS= read -r f; do
         # `is_text && printf` would be wrong here. A binary or empty file makes
         # is_text the last command in the loop body, the loop returns 1, and
         # under `pipefail` the whole substitution fails -- so `set -e` kills the
@@ -58,6 +93,7 @@ lines_changed() {
         fi
       done
   } | awk '$1 != "-" { n += $1 + $2 } END { print n + 0 }'
+  rm -f "$_idx"
 }
 
 
@@ -86,6 +122,13 @@ LEO_DIR="${ROOT:-.}/.leo"
 PLAN="$LEO_DIR/plan.md"
 MANIFEST="$LEO_DIR/manifest.md"
 RULES="$LEO_DIR/rules"
+# One file per recorded-but-unlanded cycle. `leo record` writes them, `leo
+# commit` reads them all and consumes them. See the records section below.
+RECORDS="$LEO_DIR/commits"
+# Which declared tools this cycle actually used. `leo use` appends, `leo check`
+# reads, `leo record` folds it into the record and clears it. See the tools
+# section below.
+USED="$LEO_DIR/used"
 
 # .leo/config is plain `KEY=value` shell so it needs no parser.
 TEST_CMD=""
@@ -253,7 +296,10 @@ next_step() {
     return 0
   }
 
-  printf 'leo check, then leo commit "<subject>" — the commit is yours'
+  # The cycle ends at the record, not at the commit. `leo commit` is still the
+  # developer's and still lands the change -- it is just no longer the thing
+  # that has to happen for this cycle to be finished.
+  printf 'leo check, then leo record "<subject>" — the commit comes later, and is theirs'
 }
 
 # task_next_item <id> — the first unticked line of a task's to-do, trimmed, so
@@ -279,6 +325,83 @@ who() {
   elif [ -n "${AIDER_MODEL:-}" ];    then printf 'Aider'
   else printf 'unknown'
   fi
+}
+
+# ------------------------------------------------------------ records ----
+# A recorded commit message that has not landed yet. `leo record` writes one
+# per finished cycle; `leo commit` folds every one of them into a single real
+# commit and deletes them.
+#
+# The point is that a cycle can finish -- checked, manifested, message written
+# -- without the developer having to decide the *whole* change is done. That
+# decision was being asked several times for what is really one piece of work,
+# and each early yes spent a commit on a change nobody had seen whole yet.
+#
+# Records are working state, like the plan and the manifest: they are
+# gitignored, because every one of them ends up inside the commit message it
+# describes.
+
+# records — every record file, oldest first. Silent when there are none.
+records() {
+  [ -d "$RECORDS" ] || return 0
+  # A literal glob is what `ls` returns for an empty directory; the guard is
+  # what keeps a "leo/commits/*.md" from being read as a filename.
+  for _r in "$RECORDS"/*.md; do
+    [ -f "$_r" ] || continue
+    printf '%s\n' "$_r"
+  done
+}
+
+# record_count — how many cycles are recorded and waiting.
+record_count() { records | wc -l | tr -d ' '; }
+
+# record_next_id — the number the next record gets, zero-padded so the glob
+# above sorts in the order the cycles actually happened.
+record_next_id() {
+  _n=$(records | wc -l | tr -d ' ')
+  printf '%03d' $(( _n + 1 ))
+}
+
+# record_field <file> <name> — one `Name: value` header line from a record.
+record_field() {
+  sed -n "s/^$2: *//p" "$1" | head -1
+}
+
+# record_base — what the next `leo scan` should diff against.
+#
+# Without a landed commit there is no HEAD that means "everything before this
+# cycle", so each record carries the tree it left behind and the next scan
+# starts from that. Otherwise cycle two's manifest would re-enumerate every
+# hunk cycle one already accounted for, and the budget check would measure the
+# whole change against one task's estimate.
+record_base() {
+  _last=$(records | tail -1)
+  [ -n "$_last" ] || { printf 'HEAD'; return 0; }
+  _t=$(record_field "$_last" Tree)
+  # A tree object is not reachable from any ref, so `git gc --prune=now` can
+  # take it. That is a fortnight of grace by default and these live for hours,
+  # but fall back rather than die on a base that has been collected.
+  if [ -n "$_t" ] && git rev-parse --verify --quiet "$_t" >/dev/null 2>&1; then
+    printf '%s' "$_t"
+  else
+    printf 'HEAD'
+  fi
+}
+
+# snapshot_tree — write the working tree as a git tree object and print its
+# sha, without touching the developer's index.
+#
+# The staging version of this made `git diff <tree>` work and the repository
+# wrong; see base_index for what that cost. Everything that reads one of these
+# trees goes through base_index, so the snapshot can stay in a throwaway index
+# where it belongs.
+snapshot_tree() {
+  _i=$(mktemp "${TMPDIR:-/tmp}/leo-snap.XXXXXX")
+  rm -f "$_i"
+  GIT_INDEX_FILE="$_i" git read-tree HEAD 2>/dev/null || true
+  GIT_INDEX_FILE="$_i" git add -A
+  GIT_INDEX_FILE="$_i" git write-tree
+  rm -f "$_i"
 }
 
 # ------------------------------------------------------------ reviews ----
@@ -384,9 +507,15 @@ review_pick() {
 # capabilities that kind of work wants. Plain `KEY=value` shell, like
 # .leo/config, so it needs no parser.
 #
-# It is a declaration, not a switch. leo installs, launches and configures
-# nothing; it records what was mediating the agent's view of the code, and that
-# ends up in the commit message. Nothing in `leo check` reads it.
+# It was a declaration and not a switch: leo recorded what was mediating the
+# agent's view and checked nothing. That made the switches decorative -- six of
+# the seven capabilities changed no leo behaviour at all, on or off, so a mode
+# was a label rather than a setting.
+#
+# It is a switch now, enforced the only way leo can enforce anything: not by
+# controlling the agent, which it cannot do, but by requiring evidence. ON must
+# leave a mark, OFF must leave none, and `leo check` reads both. leo still
+# installs, launches and configures nothing.
 #
 # Engineering controls are deliberately absent. Plan, task IDs, manifest,
 # rules, tests and human commit live in the code that runs them, so there is no
@@ -535,6 +664,71 @@ for _dir in $ADAPTER_DIRS; do
     printf '%s\n' $CAPS | grep -qx "$_n" || CAPS="$CAPS $_n"
   done
 done
+
+# ------------------------------------------------------------- tools ----
+# A switch is only a switch if something checks it. leo cannot make an agent
+# call a tool or stop it calling one -- it is a shell script that runs before
+# and after, not a supervisor. What it can do is the thing it already does for
+# the grill: require the mark that using something leaves behind.
+#
+# Two kinds of tool, because they leave two different kinds of mark:
+#
+#   invoked   the agent calls it at a moment -- a code index, a graph query.
+#             The mark is the agent saying so: `leo use serena` announces it
+#             and writes the ledger, in one action, so what you see and what
+#             the check reads cannot disagree.
+#   ambient   an output filter or context reducer wrapping the whole session.
+#             It is not used at a moment, it is in effect. The mark is the
+#             adapter's own `_present`: on and not actually installed is a
+#             failure of the environment, not of the agent's honesty.
+#
+# The honest limit, stated once and repeated in the docs: an agent that uses an
+# invoked tool and never runs `leo use` is invisible to this. Attestation
+# catches the careless case, not the deceptive one. It is still the difference
+# between a switch and a label.
+
+# cap_kind <cap> — invoked, ambient or practice. Ambient is the default: it
+# needs nothing from the agent, so an adapter that never declares a kind cannot
+# start failing checks for want of a line nobody knew to write.
+cap_kind() {
+  if command -v "${1}_kind" >/dev/null 2>&1; then
+    "${1}_kind"
+  else
+    printf 'ambient'
+  fi
+}
+
+# used_log <cap> [note] — record one tool use, once per cycle.
+#
+# Appended rather than rewritten, and deduplicated on the name: the question
+# this answers is "which tools built these hunks", which one line each answers
+# completely. A line per call would grow with the session and be re-read by the
+# agent on every later turn, which is the cost `leo check` went terse to avoid.
+used_log() {
+  mkdir -p "$LEO_DIR"
+  used_has "$1" && return 0
+  printf '%s\t%s%s\n' "$1" "$(now)" "${2:+	$2}" >> "$USED"
+}
+
+# used_has <cap> — has this tool already been logged this cycle?
+used_has() {
+  [ -f "$USED" ] || return 1
+  cut -f1 "$USED" | grep -qx "$1"
+}
+
+# used_note <cap> — the third field, when there is one. DENIED marks a tool
+# that was refused and used anyway, which is the one thing here that fails a
+# check rather than merely informing it.
+used_note() {
+  [ -f "$USED" ] || return 0
+  awk -F'\t' -v c="$1" '$1 == c { print $3; exit }' "$USED"
+}
+
+# used_list — every tool logged this cycle, one name per line.
+used_list() {
+  [ -f "$USED" ] || return 0
+  cut -f1 "$USED"
+}
 
 # cap_present <cap> — 0 installed, 1 missing, 2 leo has no adapter for it.
 # The third case is real and must stay visible: leo can name a capability it

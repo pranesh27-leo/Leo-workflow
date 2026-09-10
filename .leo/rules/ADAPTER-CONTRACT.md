@@ -16,6 +16,13 @@ this rule catches the other half, an adapter that is never reachable at all.
 
 `<name>_advice` stays optional: there is not always something useful to say.
 
+`<name>_kind` is optional too, and defaults to `ambient`. It says how leo can
+tell the tool was used: `invoked` means the agent announces it with `leo use`,
+`ambient` means the adapter's own `_present` is the evidence, `practice` means
+`leo check` gates it in a stage of its own. Ambient is the default deliberately
+— it asks nothing of the agent, so an adapter that never declares a kind cannot
+start failing checks for want of a line nobody knew to write.
+
 ## Verify
 
 ```sh

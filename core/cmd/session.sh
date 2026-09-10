@@ -73,7 +73,7 @@ if [ "$_set" -eq 1 ]; then
 
   mkdir -p "$LEO_DIR"
   {
-    echo "# leo session — written by \`leo session\`. Declaration only."
+    echo "# leo session — written by \`leo session\`. Read by \`leo check\`."
     echo
     echo "MODE=$MODE"
     for _c in $CAPS; do
@@ -130,9 +130,21 @@ if [ "$_report" -eq 1 ]; then
       }
       END { printf "%d hunk(s), %d reviewed, %d serving no task", n + 0, n - blank, free + 0 }' "$MANIFEST")"
     _row "Tests" "$(sed -n 's/^Tests: *//p' "$MANIFEST" | head -1)"
-    _row "Approval" "PENDING — leo commit is yours"
   else
     _row "Manifest" "none — run: leo scan"
+  fi
+
+  # Cycles finished but not landed. Without this row the report would show a
+  # change with no manifest and nothing to approve, which is what a change
+  # that has not started looks like -- and after a disconnect that is exactly
+  # the wrong thing to believe.
+  _rn=$(record_count)
+  if [ "$_rn" -gt 0 ]; then
+    _row "Recorded" "$_rn cycle(s), none in git — leo commit --list"
+    _row "Approval" "PENDING — leo commit lands all $_rn as one, and is yours"
+  elif [ -f "$MANIFEST" ]; then
+    _row "Approval" "PENDING — leo record ends this cycle, leo commit is yours"
+  else
     _row "Approval" "nothing to approve yet"
   fi
 
@@ -212,6 +224,23 @@ group "efficiency" rtk headroom ponytail caveman
 group "practice" tdd
 group "extensions" $_extra
 
+# Which runtime the vendored skills are wired for. leo installs them into
+# .claude/skills/ and does not guess at Cursor's or Codex's conventions, so a
+# team on something else can see at a glance that this part is not for them.
+# Printed rather than inferred: a skill nobody can see is the bug this whole
+# section exists because of.
+if [ -d "$ROOT/.claude/skills" ]; then
+  _sk=""
+  for _d in "$ROOT"/.claude/skills/*/; do
+    [ -f "$_d/SKILL.md" ] || continue
+    _sk="$_sk${_sk:+, }$(basename "$_d")"
+  done
+  if [ -n "$_sk" ]; then
+    head_ "skills"
+    printf '  %-13s %s\n' "$_sk" "wired for Claude Code (.claude/skills/)" >&2
+  fi
+fi
+
 # Always on, in every mode, and not settable from here. That is the point of
 # the tool: the capabilities above change what the agent sees, and none of them
 # gets to change what leo checks.
@@ -277,4 +306,4 @@ if [ "$_missing" -gt 0 ]; then
   warn "$_missing enabled capability(s) not installed — leo works without them"
   dim  "  install one above, or drop it here: leo session --<name> off"
 fi
-dim "  leo does not install these. Declaring one does not switch anything on."
+dim "  leo does not install these. It does check them: a tool that is ON and\n  installed must be announced with leo use, or leo check fails."

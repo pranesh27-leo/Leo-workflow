@@ -71,8 +71,19 @@ check "plan with no task rows" 0
 # already computed. A .pyc or a .DS_Store was enough.
 printf '\000\001\002' > blob.bin
 : > empty.txt
+# Without a manifest, so this exercises the one thing it is for. With one, the
+# coverage check would fail first -- correctly, because an untracked .pyc is a
+# file `leo commit` would `git add -A` into the commit unreviewed -- and the
+# budget path this test exists to protect would never be reached.
+mv .leo/manifest.md "$TMP/keep-manifest"
 check "untracked binary and empty file" 0
 has "$(NO_COLOR=1 "$LEO" check 2>&1)" "est .* actual" "the budget line survives an untracked binary"
+
+# And with a manifest, the same two files are exactly what the coverage check
+# is for: they arrived after the scan and nothing has accounted for them.
+mv "$TMP/keep-manifest" .leo/manifest.md
+out=$(NO_COLOR=1 "$LEO" check 2>&1)
+has "$out" "blob.bin" "an untracked binary added after the scan is reported"
 rm -f blob.bin empty.txt
 
 printf 'check catches what it is for\n'
@@ -111,17 +122,31 @@ NO_COLOR=1 "$LEO" session --mode nope >/dev/null 2>&1 \
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
 [ -f .leo/session ] && bad "--clear ends the session" || ok "--clear ends the session"
 
-# The plan's wrong-change signal: the session is provenance, not a gate. If
-# `leo check` ever reads it for anything but the one line it prints on failure,
-# this is the test that says so.
+# The session used to be provenance rather than a gate, and this test asserted
+# `leo check` behaved identically with and without one. It is a switch now:
+# a declared tool that is ON and never used fails, so the old assertion is
+# false by design.
+#
+# What must still hold is the half of it that was actually load-bearing --
+# a session can add failures, never remove one. If declaring a mode could ever
+# make a failing check pass, a mode would be a way to switch off an
+# engineering control, which is the thing leo refuses to have.
 a=$(NO_COLOR=1 "$LEO" check 2>&1); arc=$?
 NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
 b=$(NO_COLOR=1 "$LEO" check 2>&1); brc=$?
-b=$(printf '%s\n' "$b" | grep -v 'session mode:')
-if [ "$arc" = "$brc" ] && [ "$a" = "$b" ]; then
-  ok "check behaves identically with and without a session"
+if [ "$arc" = 0 ] || [ "$brc" != 0 ]; then
+  ok "a session can add failures but never removes one"
 else
-  bad "check behaves identically with and without a session (rc $arc vs $brc)"
+  bad "declaring a session turned a failing check green (rc $arc -> $brc)"
+fi
+
+# And the controls themselves stay out of the session file: there is no key a
+# mode could set that turns the plan, the manifest or the tests off.
+NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
+if grep -qiE '^(PLAN|MANIFEST|RULES|TESTS|COMMIT)=' .leo/session 2>/dev/null; then
+  bad "the session file can switch off an engineering control"
+else
+  ok "no engineering control is settable from the session"
 fi
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
 
@@ -199,6 +224,11 @@ has "$out" "ZZ Demo  *ON  *(you)" "an extension can be overridden like a built-i
 # The wrong-change signal from the plan, stated as a test: a broken adapter in
 # a repository must not be able to break leo. If this ever fails, extensions
 # have become a plugin framework and should be taken back out.
+# The baseline is taken with the file already in place and *valid*, so the only
+# thing that changes between the two runs is whether it parses. Taking it
+# before the file existed would compare "file exists" against "file does not
+# exist", and the manifest coverage check would legitimately differ.
+printf 'zzbroken_present() { return 1; }\nzzbroken_hint() { say "x"; }\n' > .leo/integrations/zzbroken.sh
 a=$(NO_COLOR=1 "$LEO" check 2>&1); arc=$?
 printf 'zzbroken_present() { unbalanced "\n' > .leo/integrations/zzbroken.sh
 out=$(NO_COLOR=1 "$LEO" session 2>&1)
@@ -469,7 +499,17 @@ printf '%s' "$out" | grep -q 'tools/zzdemo.md' \
 rm -rf .leo/integrations
 
 printf 'the workflow gates tool use on the session\n'
-has "$(cat .leo/workflow.md)" "ON .*and installed" "the workflow says a tool must be ON and installed"
+# The wording changed when the session became a switch rather than a label:
+# "use only what is ON and installed" was passive, and an agent that used
+# nothing satisfied it. The contract now has two halves, and both must be in
+# the file the agent actually reads.
+w=$(cat .leo/workflow.md)
+has "$w" "leo use" "the workflow tells the agent to announce a tool"
+has "$w" "must actually be used" "the workflow says an ON tool has to be used"
+has "$w" "OFF is not a suggestion" "the workflow still says OFF means off"
+# And the always-loaded file carries the same order, or the agent never reads
+# the workflow in time to follow it.
+has "$(cat AGENTS.md)" "leo use" "AGENTS.md carries the announce order"
 has "$(cat .leo/workflow.md)" ".leo/tools/" "the workflow sends the agent to the per-tool doc"
 
 printf 'caveman is skill only\n'
@@ -519,6 +559,416 @@ fi
 # ...and the doc forbids it rather than merely omitting it.
 has "$(cat "$LEOHOME/templates/tools/caveman.md")" "no .CAVE_API_KEY" \
   "the caveman doc rules the gateway out explicitly"
+
+printf 'the manifest must still cover the tree it is checked against\n'
+# Found by building a real project with leo. `leo scan` snapshots the diff;
+# `leo check` then validated the snapshot's rows and never asked whether the
+# snapshot was still true. A file created after the scan had no row, no task,
+# and no complaint -- "all checks passed", straight into the commit. The whole
+# premise is that every hunk maps to a task, and this was the hole in it.
+STALE="$TMP/stale"
+mkdir -p "$STALE" && cd "$STALE"
+git init -q . && git config user.email t@t && git config user.name t
+echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
+NO_COLOR=1 "$LEO" init >/dev/null 2>&1
+printf 'TEST_CMD="true"\n' >> .leo/config
+git add -A && git commit -qm adopt >/dev/null 2>&1
+printf '# Plan: p\n\n## Goal\n\nA thing.\n\n| T1 | it | a.py | 5 | done |\n\nest: 40 LOC\n' > .leo/plan.md
+mkdir -p .leo/tasks
+printf '# T1\n\n## Grill\n\nsettled\n\n## To-do\n\n- [x] x\n' > .leo/tasks/T1.md
+printf 'x = 1\n' > a.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+NO_COLOR=1 "$LEO" check >/dev/null 2>&1
+rc=$?
+[ "$rc" = 0 ] && ok "the check passes while the manifest is current" \
+              || bad "setup: check already failed (rc=$rc)"
+
+# The file the manifest has never heard of.
+printf 'SECRET = "sk-live-000"\n' > sneaky.py
+out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+has "$out" "sneaky.py" "check names a file that appeared after the scan"
+[ "$rc" != 0 ] && ok "a file added after the scan fails the check" \
+               || bad "a file added after the scan passed unreviewed"
+
+# Rescanning is the fix, and it must settle it.
+rm -f .leo/manifest.md
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+NO_COLOR=1 "$LEO" check >/dev/null 2>&1
+[ "$?" = 0 ] && ok "rescanning settles it" || bad "rescanning did not settle it"
+
+# Deleting work covered by the manifest is not the same failure: the row is
+# stale, not the tree, and reverting a file is a normal thing to do.
+rm -f sneaky.py a.py
+out=$(NO_COLOR=1 "$LEO" check 2>&1)
+printf '%s' "$out" | grep -q "appeared since" \
+  && bad "removing a file is reported as an unreviewed hunk" \
+  || ok "removing covered work is not an unreviewed hunk"
+cd "$TMP/repo"
+
+printf 'an empty file is text, not binary\n'
+# Found by building a real Python project with leo: every __init__.py showed up
+# in the manifest as `binary`, with no line count and nothing to review. The
+# test was `grep -Iq .` -- the `.` needs one character on some line, so a
+# zero-byte file matches nothing and reads as binary. A file of only newlines
+# read as binary too.
+IST="$TMP/istext"
+mkdir -p "$IST" && cd "$IST"
+: > empty.py
+printf '\n\n' > blanks.py
+printf 'x = 1\n' > real.py
+printf '\000\001\002' > bin.dat
+( LEO_HOME="$LEOHOME"; export LEO_HOME
+  . "$LEOHOME/core/lib.sh" >/dev/null 2>&1
+  is_text empty.py  && echo "empty:text"  || echo "empty:binary"
+  is_text blanks.py && echo "blanks:text" || echo "blanks:binary"
+  is_text real.py   && echo "real:text"   || echo "real:binary"
+  is_text bin.dat   && echo "bin:text"    || echo "bin:binary" ) > "$TMP/istext.out" 2>/dev/null
+o=$(cat "$TMP/istext.out")
+has "$o" "empty:text"  "an empty file is text"
+has "$o" "blanks:text" "a file of blank lines is text"
+has "$o" "real:text"   "an ordinary file is text"
+has "$o" "bin:binary"  "a file with NULs is still binary"
+cd "$TMP/repo"
+
+printf 'a tool switch is a switch: on works, off is refused\n'
+# The bulb test. A capability that is ON must leave evidence it was used; one
+# that is OFF must leave none. Its own repository, with a fixture adapter, so
+# the assertions do not depend on whether serena or rtk happen to be installed
+# on the machine running the suite.
+TOOLS="$TMP/tools"
+mkdir -p "$TOOLS" && cd "$TOOLS"
+git init -q . && git config user.email t@t && git config user.name t
+echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
+NO_COLOR=1 "$LEO" init >/dev/null 2>&1
+printf 'TEST_CMD="true"\n' >> .leo/config
+# Two fixtures: one the agent invokes, one that is simply in effect. Both
+# report themselves installed, which is what lets the switch be tested at all.
+cat > .leo/integrations/pretend.sh <<'ADAPTER'
+pretend_present() { return 0; }
+pretend_hint()    { say "nothing to install"; }
+pretend_kind()    { printf 'invoked'; }
+pretend_label()   { printf 'Pretend'; }
+ADAPTER
+cat > .leo/integrations/ambient.sh <<'ADAPTER'
+ambient_present() { return 0; }
+ambient_hint()    { say "nothing to install"; }
+ambient_kind()    { printf 'ambient'; }
+ambient_label()   { printf 'Ambient'; }
+ADAPTER
+NO_COLOR=1 "$LEO" session --mode coding --pretend on --ambient on >/dev/null 2>&1
+git add -A && git commit -qm adopt >/dev/null 2>&1
+
+# --- announcing ---
+out=$(NO_COLOR=1 "$LEO" use pretend 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "leo use exits 0 for a tool that is on" || bad "leo use exit was $rc: $out"
+printf '%s' "$out" | grep -qi "pretend" && ok "leo use announces the tool by name" || bad "leo use announces the tool by name"
+[ -f .leo/used ] && ok "leo use writes the ledger" || bad "leo use writes the ledger"
+grep -q '^pretend' .leo/used 2>/dev/null && ok "the ledger names the tool" \
+                                         || bad "the ledger names the tool"
+# Once per tool per cycle: the announcement repeats, the ledger line does not.
+NO_COLOR=1 "$LEO" use pretend >/dev/null 2>&1
+n=$(grep -c '^pretend' .leo/used 2>/dev/null || true)
+[ "${n:-0}" = 1 ] && ok "a second use does not duplicate the ledger line" \
+                  || bad "the ledger has $n lines for one tool"
+
+out=$(NO_COLOR=1 "$LEO" use nosuchtool 2>&1); rc=$?
+if [ "$rc" != 0 ] && ! printf '%s' "$out" | grep -q "unknown command"; then
+  ok "leo use refuses a tool leo has never heard of"
+else
+  bad "leo use did not reject the tool name itself: $out"
+fi
+
+# --- the off switch ---
+# caveman is off in coding mode. Using it must be refused at the moment of use,
+# and recorded anyway -- refusing is prevention, recording is detection.
+out=$(NO_COLOR=1 "$LEO" use caveman 2>&1); rc=$?
+if [ "$rc" != 0 ] && ! printf '%s' "$out" | grep -q "unknown command"; then
+  ok "leo use refuses a tool that is off"
+else
+  bad "leo use did not refuse an off tool: $out"
+fi
+printf '%s' "$out" | grep -qi "is off" && ok "the refusal says the tool is off" || bad "the refusal says the tool is off"
+grep -q '^caveman' .leo/used 2>/dev/null && ok "the refused attempt is recorded anyway" \
+                                         || bad "the refused attempt is recorded anyway"
+
+# --- the check reads the ledger ---
+printf '# Plan: p\n\n## Goal\n\nA thing.\n\n| T1 | it | a.py | 5 | doing |\n\nest: 20 LOC\n' > .leo/plan.md
+mkdir -p .leo/tasks
+printf '# T1\n\n## Grill\n\nsettled\n\n## To-do\n\n- [x] x\n' > .leo/tasks/T1.md
+printf 'x = 1\n' > a.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+
+out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+has "$out" "caveman" "check names the off tool that was used"
+if [ "$rc" != 0 ] && printf '%s' "$out" | grep -q "caveman"; then
+  ok "check fails when an off tool was used"
+else
+  bad "check did not fail on the off tool (rc=$rc)"
+fi
+
+# Clear the violation and the evidence, and the remaining failure must be the
+# unused ON tool. It has to be the fixture rather than serena: serena is ON in
+# coding mode but not installed on the machine running this suite, and a tool
+# that is not installed could not have been used, so leo does not demand it.
+rm -f .leo/used
+out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+printf '%s' "$out" | grep -qi "pretend" \
+  && ok "check names an invoked tool that is on and unused" \
+  || bad "check did not name the unused invoked tool"
+[ "$rc" != 0 ] && ok "check fails on a tool that is on and never used" \
+               || bad "check passed with an unused ON tool (the bulb is not wired)"
+
+# A tool that is ON but not installed is the developer's problem, not the
+# agent's, and must not fail the change.
+printf '%s' "$out" | grep -q "ERR.*serena" \
+  && bad "check blames the agent for a tool that is not installed" \
+  || ok "an ON tool that is not installed does not fail the check"
+
+# An ambient tool is in effect rather than invoked, so it needs no ledger line.
+# On a failing check the whole buffer is replayed, so the ambient tool's own
+# "ok ... in effect" line is present and expected. What must not be there is a
+# demand: an ambient tool is never asked to announce itself.
+if printf '%s' "$out" | grep -qi "ERR.*ambient\|ambient.*never used"; then
+  bad "check demands evidence of use from an ambient tool"
+else
+  ok "an ambient tool needs no ledger line"
+fi
+
+# Turning the unused one off is the developer's answer, and it must settle it.
+NO_COLOR=1 "$LEO" session --pretend off >/dev/null 2>&1
+out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+if printf '%s' "$out" | grep -qi "pretend is ON"; then
+  bad "turning a tool off does not settle the check"
+else
+  ok "turning a tool off settles the check"
+fi
+# Back on, and used, so the record below has something to carry.
+NO_COLOR=1 "$LEO" session --pretend on >/dev/null 2>&1
+NO_COLOR=1 "$LEO" use pretend >/dev/null 2>&1
+
+# --- landing must not re-demand evidence the record consumed ---
+# The deadlock this covers, found by building a real project: `leo commit`
+# re-runs `leo check`, and by then `leo record` has cleared both the manifest
+# and the ledger. The tools stage then saw an ON invoked tool with no evidence
+# and failed -- so recorded cycles could never be landed at all. Each record
+# was checked when it was made; there is no cycle in flight at landing time.
+NO_COLOR=1 "$LEO" record "feat: landing check" >/dev/null 2>&1
+out=$(LEO_YES=1 NO_COLOR=1 "$LEO" commit "feat: landed" 2>&1); rc=$?
+printf '%s' "$out" | grep -q "never used" \
+  && bad "landing re-demands tool evidence the record already consumed" \
+  || ok "landing does not re-demand evidence the record consumed"
+[ "$rc" = 0 ] && ok "recorded cycles can actually be landed" \
+              || bad "leo commit could not land the records (rc=$rc)"
+# Put the cycle back for the assertions below.
+printf 'y = 2\n' > b.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+NO_COLOR=1 "$LEO" use pretend >/dev/null 2>&1
+
+# --- the ledger rides into the record ---
+[ -f .leo/used ] || bad "the ledger exists before the record (setup)"
+NO_COLOR=1 "$LEO" record "feat: a thing" >/dev/null 2>&1
+r=$(cat .leo/commits/001.md 2>/dev/null || true)
+printf '%s' "$r" | grep -q '^Tools:.*pretend' \
+  && ok "the record says which tools built these hunks" \
+  || bad "the record has no Tools line naming what was used"
+[ -f .leo/used ] && bad "record clears the ledger" || ok "record clears the ledger"
+cd "$TMP/repo"
+
+printf 'TDD is a switch too, and it has a gate\n'
+TDDR="$TMP/tdd"
+mkdir -p "$TDDR" && cd "$TDDR"
+git init -q . && git config user.email t@t && git config user.name t
+echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
+NO_COLOR=1 "$LEO" init >/dev/null 2>&1
+printf 'TEST_CMD="true"\n' >> .leo/config
+NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
+git add -A && git commit -qm adopt >/dev/null 2>&1
+printf '# Plan: p\n\n## Goal\n\nA thing.\n\n| T1 | it | a.py | 5 | doing |\n\nest: 20 LOC\n' > .leo/plan.md
+NO_COLOR=1 "$LEO" task T1 >/dev/null 2>&1
+# leo seeds the red-before-green steps while TDD is on; the grill still gates.
+grep -q 'watch it FAIL' .leo/tasks/T1.md && ok "TDD on seeds the red step" \
+                                         || bad "TDD on seeds the red step"
+awk '/leo:ungrilled/ { next } { print }' .leo/tasks/T1.md > "$TMP/t" && mv "$TMP/t" .leo/tasks/T1.md
+printf 'x = 1\n' > a.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+
+out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+has "$out" "watched a test fail" "check names the unticked red step"
+if [ "$rc" != 0 ] && printf '%s' "$out" | grep -q "watched a test fail"; then
+  ok "TDD on fails while the test was never watched to fail"
+else
+  bad "the TDD gate did not fire (rc=$rc)"
+fi
+
+# Ticking it is the whole fix.
+sed 's/- \[ \] run it, watch it FAIL/- [x] run it, watch it FAIL/' .leo/tasks/T1.md > "$TMP/t" && mv "$TMP/t" .leo/tasks/T1.md
+out=$(NO_COLOR=1 "$LEO" check 2>&1)
+printf '%s' "$out" | grep -q "never watched a test fail" \
+  && bad "ticking the red step does not settle the TDD gate" \
+  || ok "ticking the red step settles the TDD gate"
+
+# And with TDD off there is no gate at all.
+NO_COLOR=1 "$LEO" session --tdd off >/dev/null 2>&1
+sed 's/- \[x\] run it, watch it FAIL/- [ ] run it, watch it FAIL/' .leo/tasks/T1.md > "$TMP/t" && mv "$TMP/t" .leo/tasks/T1.md
+out=$(NO_COLOR=1 "$LEO" check 2>&1)
+printf '%s' "$out" | grep -q "never watched a test fail" \
+  && bad "TDD off still gates" || ok "TDD off removes the gate"
+cd "$TMP/repo"
+
+printf 'a vendored skill reaches the runtime that reads it\n'
+# The bug this covers: init vendored the grill into .leo/skills/, which no
+# agent runtime reads, so the skill shipped and did nothing.
+SK="$TMP/skills"
+mkdir -p "$SK" && cd "$SK"
+git init -q . && git config user.email t@t && git config user.name t
+echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
+NO_COLOR=1 "$LEO" init >/dev/null 2>&1
+[ -f .claude/skills/grilling/SKILL.md ] && ok "init installs the grill where Claude Code reads it" \
+                                        || bad "init installs the grill where Claude Code reads it"
+[ -f .claude/skills/grill-me/SKILL.md ] && ok "init installs grill-me where Claude Code reads it" \
+                                        || bad "init installs grill-me where Claude Code reads it"
+[ -f .leo/skills/grilling/SKILL.md ] && ok "the canonical copy stays under .leo/skills" \
+                                     || bad "the canonical copy stays under .leo/skills"
+# Tracked, not ignored: a skill that only works for whoever last ran init is
+# the same bug one level down.
+git add -A >/dev/null 2>&1
+git ls-files --error-unmatch .claude/skills/grilling/SKILL.md >/dev/null 2>&1 \
+  && ok "the installed skill is tracked, not gitignored" \
+  || bad "the installed skill is not tracked"
+cd "$TMP/repo"
+
+printf 'a cycle is recorded, and many records land as one commit\n'
+# The deferred flow end to end, in its own repository: record two cycles,
+# prove nothing reached git in between, prove the second cycle scanned only
+# its own hunks, then land both as a single commit.
+REC="$TMP/rec"
+mkdir -p "$REC" && cd "$REC"
+git init -q . && git config user.email t@t && git config user.name t
+echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
+NO_COLOR=1 "$LEO" init >/dev/null 2>&1
+printf 'TEST_CMD="true"\n' >> .leo/config
+git add -A && git commit -qm adopt >/dev/null 2>&1
+before=$(git rev-parse HEAD)
+
+# --- cycle one ---
+printf '# Plan: limits\n\n## Goal\n\nCap each key.\n\n| T1 | bucket | limiter.py | 5 | done |\n| T2 | body | errors.py | 5 | doing |\n\nest: 40 LOC\n' > .leo/plan.md
+mkdir -p .leo/tasks
+printf '# T1: bucket\n\n## Grill\n\nFixed window.\n\n## To-do\n\n- [x] done\n' > .leo/tasks/T1.md
+printf '# T2: body\n\n## Grill\n\nJSON.\n\n## To-do\n\n- [x] done\n' > .leo/tasks/T2.md
+printf 'def allow(k):\n    return True\n' > limiter.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+sed 's/|  |  |  |/| T1 | the bucket | no limiting |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+
+# No tty, and it must not refuse: recording writes no history, so it is the
+# one end-of-cycle command an agent is allowed to run.
+out=$(unset LEO_YES; NO_COLOR=1 "$LEO" record "api: cap each key" </dev/null 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "record runs without a tty" || bad "record exit was $rc: $out"
+has "$out" "recorded 001" "record names the record it wrote"
+[ -f .leo/commits/001.md ] && ok "record writes .leo/commits/001.md" \
+                           || bad "record writes .leo/commits/001.md"
+[ "$(git rev-parse HEAD)" = "$before" ] && ok "record commits nothing" \
+                                        || bad "record moved HEAD"
+[ -f .leo/manifest.md ] && bad "record clears the manifest" \
+                        || ok "record clears the manifest"
+r=$(cat .leo/commits/001.md)
+has "$r" "api: cap each key" "the record carries the subject"
+has "$r" "Cap each key"      "the record carries the plan's goal"
+has "$r" "the bucket"        "the record carries the manifest"
+has "$r" "^Tree: "           "the record carries the tree it left behind"
+
+# The index is the developer's. `leo record` used to `git add -A` to build its
+# snapshot, and the consequence was found by using it: an ordinary
+# `git add <one file> && git commit` after a record swept the entire recorded
+# change into that commit, under that commit's message. `leo commit` then found
+# nothing to commit and the records were orphaned, describing work already
+# committed under a lie. For a tool whose only job is an honest commit record,
+# that is the worst available bug.
+git status --porcelain | grep -q '^A ' \
+  && bad "record staged the developer's index" \
+  || ok "record leaves the index alone"
+printf 'unrelated = 1\n' > unrelated.py
+git add unrelated.py >/dev/null 2>&1
+git commit -qm "chore: something unrelated" >/dev/null 2>&1
+git show --stat --format= HEAD | grep -q 'limiter.py' \
+  && bad "an unrelated commit swept up the recorded change" \
+  || ok "an unrelated commit does not sweep up recorded work"
+# That commit is a real one, so the "records land as exactly one commit" count
+# below has to start from here rather than from before it.
+before=$(git rev-parse HEAD)
+
+# --- cycle two: the scan must start from the record, not from HEAD ---
+printf 'def body(retry):\n    return {"retry": retry}\n' > errors.py
+NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
+m=$(cat .leo/manifest.md)
+has "$m" "errors.py" "the second cycle's manifest holds the second cycle's hunk"
+printf '%s' "$m" | grep -q "limiter.py" \
+  && bad "the second cycle's manifest re-lists the first cycle's hunk" \
+  || ok "the second cycle's manifest does not re-list the first cycle's hunk"
+sed 's/|  |  |  |/| T2 | the body | a bare 429 |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
+NO_COLOR=1 "$LEO" record "api: a 429 body" >/dev/null 2>&1
+
+# --list reads and changes nothing, so the tty gate must not catch it.
+out=$(unset LEO_YES; NO_COLOR=1 "$LEO" commit --list </dev/null 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "commit --list runs without a tty" || bad "commit --list exit was $rc"
+has "$out" "api: cap each key" "commit --list names the first record"
+has "$out" "api: a 429 body"   "commit --list names the second record"
+
+# Nothing has changed since the last record, so there is no cycle to record.
+out=$(NO_COLOR=1 "$LEO" record "api: nothing" 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "record refuses when nothing has changed" \
+              || bad "record on a clean tree exit was $rc"
+
+# --- landing ---
+LEO_YES=1 NO_COLOR=1 "$LEO" commit "api: per-key rate limiting" >/dev/null 2>&1
+[ "$(git rev-parse HEAD)" != "$before" ] && ok "commit lands the records" \
+                                         || bad "commit did not move HEAD"
+[ "$(git rev-list --count "$before"..HEAD)" = 1 ] \
+  && ok "two records land as exactly one commit" \
+  || bad "two records landed as $(git rev-list --count "$before"..HEAD) commits"
+msg=$(git log -1 --format=%B)
+has "$msg" "api: per-key rate limiting" "the landed subject is the one typed at the end"
+has "$msg" "api: cap each key" "the message keeps the first cycle's subject"
+has "$msg" "api: a 429 body"   "the message keeps the second cycle's subject"
+has "$msg" "the bucket"        "the message keeps the first cycle's manifest"
+has "$msg" "the body"          "the message keeps the second cycle's manifest"
+# The record base is a tree object that will be garbage collected; it must not
+# be left in a message somebody reads years from now.
+printf '%s' "$msg" | grep -q "^Base: [0-9a-f]\{40\}$" \
+  && bad "the message leaks the record's tree sha" \
+  || ok "the message does not leak the record's tree sha"
+[ -d .leo/commits ] && bad "commit consumes the records" || ok "commit consumes the records"
+
+# Cycle two is briefed from that commit message, and the message now has one
+# section per record. The briefing must read as one change, not as three
+# tables stapled together.
+NO_COLOR=1 "$LEO" review "$(git rev-parse --short HEAD)" >/dev/null 2>&1
+rv=$(cat .leo/reviews/*.md 2>/dev/null)
+has "$rv" "the bucket" "the review is briefed with the first cycle's manifest"
+has "$rv" "the body"   "the review is briefed with the second cycle's manifest"
+hdr=$(printf '%s' "$rv" | grep -c '^| # | Hunk' || true)
+[ "${hdr:-0}" = 1 ] && ok "the briefing prints one manifest header, not one per record" \
+                    || bad "the briefing prints $hdr manifest headers"
+# Dedup, not "exactly one": two cycles can honestly have two different budget
+# lines, and both belong in the briefing. What must not happen is the same line
+# printed once per record.
+bud=$(printf '%s' "$rv" | grep -c '^Budget:' || true)
+budu=$(printf '%s' "$rv" | grep '^Budget:' | sort -u | grep -c . || true)
+[ "${bud:-0}" = "${budu:-0}" ] && ok "the briefing prints each budget line once" \
+                              || bad "the briefing repeats a budget line ($bud lines, $budu distinct)"
+
+# A one-cycle change never needs a record, and that path is unchanged.
+out=$(unset LEO_YES; NO_COLOR=1 "$LEO" commit </dev/null 2>&1); rc=$?
+has "$out" "needs a human at a terminal" "commit with no records still needs a tty"
+out=$(LEO_YES=1 NO_COLOR=1 "$LEO" commit 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "commit with no records and no subject shows the usage" \
+              || bad "bare commit with no records exit was $rc"
+has "$out" "leo record" "the usage points at record as the way to defer"
+cd "$TMP/repo"
 
 printf "commit is the human's\n"
 # In a subshell, so the assertion holds whatever the caller's environment is:

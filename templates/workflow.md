@@ -8,16 +8,25 @@ Two cycles. Seven stages in the first, four in the second. Do the one you
 were asked for, and stop there.
 
 ```
-CYCLE ONE -- build it
-grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
+CYCLE ONE -- build it            (runs once per part of the change)
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  record
            leo plan  leo task  leo task     write it   leo scan     leo check
-                     T1        T1 --sub "x"            leo check    leo commit <- theirs
+                     T1        T1 --sub "x"            leo check    leo record
                                                                         |
+        nothing is in git yet. Repeat cycle one until the change is whole, then:
+                                                                        v
+                                                                     commit
+                                                                     leo commit
+                                                                        <- theirs
 CYCLE TWO -- read it, in a NEW session                                  v
 brief  ->  read  ->  findings  ->  close
 leo review <sha>  the diff vs      leo review --close  <- theirs
                   STANDARDS.md
 ```
+
+**A cycle ends at the record, not at the commit.** `leo record` files the
+message this cycle would have committed and stops. The change lands once, when
+the developer has seen all of it, with every recorded cycle in the message.
 
 **The two cycles do not overlap.** Cycle one writes code and cannot review it;
 cycle two reads a commit that already exists and cannot edit it. If you are in
@@ -46,14 +55,30 @@ something they may need to read line by line. The mode is theirs — never chang
 it, and if the work has clearly turned into something else, say so and let them
 switch it.
 
-**Use only what the session enables.** `leo session` lists every capability as
-ON or OFF, and as installed or MISSING. A tool is yours to use only when it is
-**ON and installed** — both. For each one that is, read `.leo/tools/<name>.md`
-before you use it and follow what it says; those files carry the prerequisites
+**Announce every tool, with `leo use`.** Before you use one, run it:
+
+```sh
+leo use serena
+```
+
+That prints what you are using for the developer to see, and logs it. Both from
+one command, so what they read and what `leo check` reads cannot disagree. Then
+read `.leo/tools/<name>.md` and follow it — those files carry the prerequisites
 and failure modes that cost somebody a session to find, and two of them carry a
-standing order rather than advice. A capability that is OFF is not a
-suggestion: do not use it, do not work around it, and do not turn it on. The
-mode is the developer's.
+standing order rather than advice.
+
+**Every tool the session has ON must actually be used.** `leo session` lists
+them; `leo check` fails on one that is ON, installed, and never announced. If
+this change genuinely does not need it, say so and show the developer
+`leo session --<name> off`. Do not run that yourself.
+
+**OFF is not a suggestion.** `leo use` on a switched-off tool refuses and
+records that it was asked for, and `leo check` fails on the record. Do not use
+it, do not work around it, and do not turn it on. The mode is the developer's.
+
+Tools that wrap the whole session rather than being called at a moment — the
+output filters and context reducers — are not announced. leo knows which are
+which and never asks you for a line that would mean nothing.
 
 **Never install anything.** If `leo session` reports a tool as MISSING, say so
 and show the developer `leo install <name>`. Do not run it, do not run the
@@ -156,8 +181,10 @@ that blocks: `leo check` fails while the task in flight is ungrilled.
 
 ### End the session when the task ends
 
-When a commit lands, say so and stop: **start a fresh session for the next
-task.**
+When a cycle is recorded, say so and stop: **start a fresh session for the next
+task.** The record is the stopping point — waiting for the commit would mean
+holding one session open across every cycle of the change, which is the most
+expensive thing you can do.
 
 An agent session re-reads its entire context on every turn, so the cost of a
 session grows with the *square* of its length — the tenth turn is paid for by
@@ -222,37 +249,52 @@ Then:
 - Name the 2–3 rows most deserving human eyes: widest blast radius, anything
   security-relevant, and any judgement call the user has not seen.
 
-## 5. Land — "check it"
+## 5. Record — "check it", "record it"
 
 ```sh
 leo check
+leo record "api: limit each key to 60 req/min"
 ```
 
-Fix what it reports. If the budget check fails at over 2×, do not review harder
-— re-read the original request. An overshoot that large almost always means the
-requirement was misread.
+Fix what `leo check` reports first. If it names a tool that is ON and unused,
+that is not a formality — either use it and announce it, or tell the developer
+it is not wanted here. If the budget check fails at over 2×, do not
+review harder — re-read the original request. An overshoot that large almost
+always means the requirement was misread.
 
 Add anything non-obvious you decided to the manifest, in one line: what you
-chose, what you rejected, what you accepted as the cost.
+chose, what you rejected, what you accepted as the cost. Then record.
 
-**Do not commit.** `leo commit` is the developer's, and it refuses to run
-without a human at a terminal. When the checks pass, run `leo session --report`
-— it is the whole state of the change on one screen — then show them the
-command and stop:
+`leo record` writes the message this cycle would have committed — subject, goal,
+manifest, session — into `.leo/commits/`, clears the manifest, and stops.
+**Nothing reaches git**, which is why you may run it: it writes no history, and
+undoing it is deleting one file. The next `leo scan` starts from the tree this
+cycle left behind, so the next manifest holds the next cycle's hunks and not
+this one's again.
+
+Then run `leo session --report` — the whole state of the change on one screen —
+say what you recorded, and stop:
 
 ```
-Checks pass. 2 files, +47 lines, every hunk mapped to T1/T2.
-Ready when you are:
-
-    leo commit "api: limit each key to 60 req/min"
+Recorded 002. Two cycles waiting, nothing in git.
+    001  api: limit each key to 60 req/min
+    002  api: return a 429 body worth reading
 ```
 
-Then say what you would want a reviewer to look at first, and wait. Deciding the
-work is done is not your call — you are the least qualified party to make it,
-having just written the thing.
+**Do not commit.** `leo commit` is the developer's, it refuses to run without a
+human at a terminal, and it lands every recorded cycle as one commit:
 
-When the commit lands, leo asks for the review. **Do not start it here.** End
-the session, and open cycle two in a new one — stage 6.
+```
+    leo commit          <- theirs, when the whole change looks right
+```
+
+Say what you would want a reviewer to look at first, and wait. Deciding the
+change is done is not your call — you are the least qualified party to make it,
+having just written the thing. If more work follows, it is a new cycle one from
+stage 1, in a fresh session.
+
+When the commit does land, leo asks for the review. **Do not start it here.**
+End the session, and open cycle two in a new one — stage 6.
 
 ## 6. Review — "review it", "start the review", after a commit lands
 

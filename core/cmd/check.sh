@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# desc: run the rules, the manifest check, the budget check and the tests
+# desc: run the rules, the manifest, the grill, the tools, TDD, the budget and the tests
 # usage: leo check [--verbose]
 #
-# Four checks, in the order that catches mistakes cheapest-first. Read this file
+# Seven checks, in the order that catches mistakes cheapest-first. Read this file
 # top to bottom -- there is no plugin system and no hidden ordering.
 #
 # Quiet on success, loud on failure. This used to print 26 lines every time it
@@ -39,6 +39,12 @@ _base=HEAD
 if [ -f "$MANIFEST" ]; then
   _base=$(sed -n 's/^Base: *//p' "$MANIFEST" | head -1)
   _base="${_base:-HEAD}"
+else
+  # No manifest and recorded cycles waiting means the manifest was consumed by
+  # `leo record`. HEAD would then measure every recorded cycle against the
+  # current plan's estimate and fail the budget on work that was already
+  # checked and accounted for.
+  _base=$(record_base)
 fi
 _fail=0
 
@@ -120,6 +126,43 @@ else
   if [ "$_creep" -gt 0 ]; then
     warn "$_creep hunk(s), $_creep_loc lines, serve no task — revert, promote or split"
   fi
+
+  # And the manifest must still describe the tree it is being checked against.
+  #
+  # `leo scan` takes a snapshot; everything above validates that snapshot's
+  # rows. None of it asks whether the snapshot is still true, and work does not
+  # stop when the scan runs -- so a file written afterwards had no row, no task
+  # and no complaint. "all checks passed", straight into the commit. That is
+  # the one guarantee leo makes, defeated by a stale file rather than by
+  # anything anyone argued for.
+  #
+  # Only files that appeared. A file the manifest covers and the tree no longer
+  # has is a revert, which is a normal thing to do mid-change and not something
+  # to fail a check over.
+  # One pass, not one grep per changed file: this runs on every check, and a
+  # repository with a few hundred touched files made the loop version cost
+  # more than every other stage put together.
+  _cov=$(mktemp "${TMPDIR:-/tmp}/leo-cov.XXXXXX")
+  awk -F'|' '
+    /^\| *[0-9NEW]/ {
+      h = $3
+      gsub(/[ \t`]/, "", h)          # `path:line` -> path:line
+      sub(/:[0-9]*$/, "", h)         # drop the line number
+      if (h != "") print h
+    }' "$MANIFEST" | sort -u > "$_cov"
+  # An empty pattern file matches nothing, so -v then yields every changed
+  # file -- which is right: a manifest with no rows covers nothing.
+  _new=$(changed "$_base" | grep -vxF -f "$_cov" || true)
+  rm -f "$_cov"
+  if [ -n "$_new" ]; then
+    err "file(s) appeared since the scan and are in no manifest row:"
+    printf '%s\n' "$_new" | sed 's/^/       /' >&2
+    dim "  the manifest describes a diff that has moved on — rescan it:"
+    dim "  rm .leo/manifest.md && leo scan"
+    _fail=1
+  else
+    ok "the manifest still covers the tree"
+  fi
 fi
 
 # --- 3. grill -------------------------------------------------------------
@@ -154,7 +197,103 @@ else
   fi
 fi
 
-# --- 4. budget ------------------------------------------------------------
+# --- 4. tools -------------------------------------------------------------
+# The switch, enforced. A tool that is ON must have left its mark; a tool that
+# is OFF must not have. Which mark depends on the kind -- see the tools section
+# in core/lib.sh for why there are two.
+#
+# Only with a session declared. No mode means nothing was switched on or off,
+# and failing a change for not using tools nobody asked for would be leo
+# inventing a policy the developer never set.
+#
+# And only with a cycle in flight. The manifest is what says there are hunks
+# here that something built; the ledger answers "what built them", and the two
+# are consumed together by `leo record`. Without this guard `leo commit`
+# deadlocked: it re-runs the checks, the record had already cleared both, and
+# the tools stage failed every landing for evidence that no longer described
+# anything. Each record was checked when it was made.
+if [ -n "$MODE" ] && [ -f "$MANIFEST" ]; then
+  head_ "tools"
+  _tn=0
+  for _c in $CAPS; do
+    _kind=$(cap_kind "$_c")
+    # A practice is not a tool the agent invokes, and it gets its own stage
+    # below. Filing it here would ask the agent to announce using TDD, which
+    # means nothing.
+    [ "$_kind" = "practice" ] && continue
+    _tn=$((_tn + 1))
+    _st=$(cap_state "$_c")
+    _lb=$(cap_call "$_c" label); _lb="${_lb:-$_c}"
+
+    if [ "$_st" = "on" ]; then
+      _pr=0; cap_present "$_c" || _pr=$?
+      if [ "$_pr" -eq 1 ]; then
+        # A tool that is not installed could not have been used, so this is
+        # never the agent's failure -- and it is not news either. Whether
+        # something is installed does not change between two checks, and
+        # `leo session` already prints "Not installed" where it is actionable.
+        # As a warn it survived the terse filter and put four lines into the
+        # context of every passing check, forever, which is the exact cost
+        # .leo/rules/ALWAYS-LOADED.md exists to stop. dim is buffered away on
+        # success and replayed in full on failure.
+        dim "  $_lb is ON and not installed — leo install $_c"
+      elif [ "$_pr" -eq 2 ]; then
+        dim "  $_lb is ON and leo has no adapter for it — nothing to verify"
+      elif [ "$_kind" = "invoked" ]; then
+        if used_has "$_c"; then
+          ok "$_lb used"
+        else
+          err "$_lb is ON and was never used — announce it: leo use $_c"
+          dim "  or it is not wanted here, which is the developer's call:"
+          dim "  leo session --$_c off"
+          _fail=1
+        fi
+      else
+        ok "$_lb in effect"
+      fi
+    elif used_has "$_c"; then
+      # The one violation that is unambiguous: the developer switched it off
+      # and the ledger says it was used anyway.
+      if [ "$(used_note "$_c")" = "DENIED" ]; then
+        err "$_lb is OFF and was used anyway, after leo refused it"
+      else
+        err "$_lb is OFF and was used anyway"
+      fi
+      dim "  the mode is the developer's — .leo/used records the attempt"
+      _fail=1
+    fi
+  done
+  [ "$_tn" -eq 0 ] && dim "  no tools declared"
+fi
+
+# --- 5. TDD ---------------------------------------------------------------
+# The practice, enforced the same way as the grill: a mark leo can grep. With
+# TDD on, `leo task` seeds the red-before-green steps into the to-do; this
+# fails while the "watch it FAIL" step is still unticked and there are already
+# hunks in the manifest. Code exists, and nothing ever watched a test fail for
+# the reason it was supposed to.
+#
+# Only when leo seeded the step. A task file written before TDD was turned on
+# has no such line, and inventing a failure for its absence would punish the
+# developer for changing their mind.
+if [ "$(cap_state tdd)" = "on" ] && [ -f "$MANIFEST" ]; then
+  head_ "tdd"
+  _tt=$(task_current)
+  _tf=""
+  [ -n "$_tt" ] && _tf=$(task_file "$_tt")
+  if [ -z "$_tt" ] || [ ! -f "$_tf" ]; then
+    dim "  no task in flight"
+  elif grep -q '^- \[ \].*watch it FAIL' "$_tf" 2>/dev/null; then
+    err "$_tt has hunks in the manifest but never watched a test fail"
+    dim "  - [ ] run it, watch it FAIL, and confirm it failed for the reason you expect"
+    dim "  tick it once you have, or turn the practice off: leo session --tdd off"
+    _fail=1
+  else
+    ok "$_tt watched its test fail first"
+  fi
+fi
+
+# --- 6. budget ------------------------------------------------------------
 # An overshoot past 2x almost always means the requirement was misread, not
 # that the work was genuinely bigger. Re-plan; do not review harder.
 head_ "budget"
@@ -171,7 +310,7 @@ else
   fi
 fi
 
-# --- 5. tests -------------------------------------------------------------
+# --- 7. tests -------------------------------------------------------------
 head_ "tests"
 _result=""
 if [ -z "$TEST_CMD" ]; then

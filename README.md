@@ -25,25 +25,36 @@ at 3am without an AI?**
    cannot invent a justification, and reports the unwanted work in lines:
    `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
    500 lines did I not ask for?"
-3. **You commit, not the agent.** `leo commit` refuses to run without a human
-   at a terminal. The agent runs `leo check`, shows you the command it would
-   run, and stops — having just written the code, it is the last party that
-   should decide the code is done.
+3. **You commit, not the agent — and only once.** A cycle ends at
+   `leo record`, which files the commit message that cycle earned and lands
+   nothing. Run cycle one as many times as the change needs; `leo commit` then
+   folds every record into a single commit, refuses to run without a human at
+   a terminal, and is yours. Having just written the code, the agent is the
+   last party that should decide the code is done — and it was being asked
+   that question once per cycle, when the honest answer only exists once.
 4. **The record belongs in the commit message.** Not in git notes, not in a side
    file, not in a chat log. `git blame` → `git show` and you get the reason a
    line exists, from git alone, forever.
 5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
    that exits non-zero when a known mistake reappears. It runs on every
    `leo check`, costs no tokens, and outlives the session that learned it.
-6. **What the agent could see is part of the record.** Your agent does not read
-   your code directly — a semantic index, an output filter and a context
-   compressor may each have had a turn first, and the diff records none of it.
-   `leo session --mode debugging` declares which of them this kind of work
-   wants, and the answer lands in the commit message next to `Assisted-by:`.
-   leo installs none of them, and none of them can turn a check off. Each one
-   also ships an instruction file — `.leo/tools/<name>.md` — that the agent
-   reads only when the session has that tool on, so what a tool needs and how
-   it actually fails is written down once instead of rediscovered.
+6. **The tool switches are switches, and you see them flip.** Your agent does
+   not read your code directly — a semantic index, an output filter and a
+   context compressor may each have had a turn first, and the diff records none
+   of it. `leo session --mode debugging` declares which of them this work wants,
+   and it is enforced rather than merely recorded: before using one the agent
+   runs `leo use serena`, which **prints what it is using for you to see** and
+   logs it in the same action, so what you read and what `leo check` reads
+   cannot drift apart. A tool that is ON and never used fails the check. A tool
+   that is OFF is refused at the moment of use, and the attempt is recorded so
+   ignoring the refusal fails too. leo installs none of them, and none of them
+   can turn a check off. Each ships an instruction file — `.leo/tools/<name>.md`
+   — pointed at when the tool is used rather than loaded up front, so seven
+   tools cost a session that needed one nothing.
+
+   leo cannot force an agent to call a tool; nothing can, from a shell. What it
+   can do is refuse to pass until the evidence is there, which is the same trade
+   the grill has always made.
 
 7. **The author does not review the change.** A commit ends the first cycle and
    starts a second one, in a new session: `leo review` opens a review of the
@@ -81,8 +92,12 @@ leo task T1                     # each task gets a file and a to-do
                                 # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
                                 # ...the agent fills in Task / Why / If deleted
-leo check                       # rules, unreviewed hunks, budget, tests
-leo commit "api: rate limit"    # you run this one. It refuses without a tty.
+leo use serena                  # the agent says which tool it is using, and logs it
+leo check                       # rules, hunks, tools, TDD, budget, tests
+leo record "api: rate limit"    # the cycle's message, filed. Nothing in git yet.
+                                # ...repeat cycle one for the next part
+leo commit                      # you run this one. It refuses without a tty,
+                                # and lands every record as one commit.
 
 # then, in a NEW session — cycle two, which the commit above asks for
 leo session --mode review
@@ -144,7 +159,8 @@ must be able to read the whole thing in one sitting.
 Two cycles, and the command for each stage:
 
 ```
-CYCLE ONE  grill -> plan -> task -> subtask -> build -> manifest -> commit
+CYCLE ONE  grill -> plan -> task -> subtask -> build -> manifest -> record
+           ...once per part of the change. Then, once: commit
 CYCLE TWO  brief -> read -> findings -> close        (a new session, after the commit)
 ```
 
@@ -165,36 +181,47 @@ leo task T1 --sub "in-memory store"   # a heading inside T1.md, not a new file
 
 # 6. manifest
 leo scan                           # diff -> one row per hunk
-leo check                          # rules, hunks, grill, budget, tests
+leo check                          # rules, hunks, grill, tools, TDD, budget, tests
 leo check --verbose                # ...showing every stage
+leo use --list                     # which tools built these hunks
 
-# 7. commit — yours, never the agent's
-leo commit "api: per-key rate limiting"
+# 7. record — the agent may run this. It writes no history.
+leo record "api: cap each key at 60 requests per minute"
+leo commit --list                  # the cycles recorded and not yet in git
+
+#    Then go back to 1 for the next part. Nothing is in git until:
+
+# 8. commit — yours, never the agent's. One commit, every record in it.
+leo commit                         # or: leo commit "api: per-key rate limiting"
 ```
 
 Then cycle two, which `leo commit` asks for:
 
 ```sh
-# 8. brief — a new session, and a review of the commit that just landed
+# 9. brief — a new session, and a review of the commit that just landed
 leo session --mode review
 leo review                         # or: leo review <sha>, leo review main..HEAD
 
-# 9. read — the diff against .leo/review/STANDARDS.md, briefed with what
+# 10. read — the diff against .leo/review/STANDARDS.md, briefed with what
 #    cycle one recorded: goal, manifest, non-goals, and what the grill settled
 
-# 10. findings — one row each: severity, where, what breaks, status
+# 11. findings — one row each: severity, where, what breaks, status
 
-# 11. close — yours, like the commit
+# 12. close — yours, like the commit
 leo review --close
 ```
 
-Then **start a fresh session for the next task.** An agent re-reads its whole
-context every turn, so a session's cost grows with the square of its length —
-`.leo/tasks/` exists so stopping costs you nothing.
+Then **start a fresh session for the next task.** The record is the stopping
+point, not the commit — an agent re-reads its whole context every turn, so a
+session's cost grows with the square of its length, and holding one session
+open across every cycle of a change is the worst shape available.
+`.leo/tasks/` and `.leo/commits/` exist so stopping costs you nothing.
 
-Two things block in cycle one: a hunk with no task, and a task with no grill.
-One blocks in cycle two: a `blocker` finding nobody has fixed or waived.
-Everything else is a working note.
+Four things block in cycle one: a hunk with no task, a task with no grill, a
+tool switch and the ledger disagreeing, and — while TDD is on — code that
+arrived without a test ever being watched to fail. One blocks in cycle two: a
+`blocker` finding nobody has fixed or waived. Everything else is a working
+note.
 
 ## Vendoring it into your repo
 

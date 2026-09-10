@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # desc: break the diff into hunks and start the manifest
-# usage: leo scan [base]        (default base: HEAD)
+# usage: leo scan [base]        (default base: HEAD, or the last record)
 #
 # This is the deterministic half of review. The shell enumerates every hunk;
 # the agent (or you) fills in the three judgement columns:
@@ -14,7 +14,11 @@
 
 need_repo
 
-_base="${1:-HEAD}"
+# The default is HEAD until a cycle has been recorded, and the tree that cycle
+# left behind after. Otherwise a second cycle re-enumerates the first one's
+# hunks: nothing landed in between, so HEAD is still the start of the change
+# rather than the start of this part of it.
+_base="${1:-$(record_base)}"
 git rev-parse --verify --quiet "$_base" >/dev/null 2>&1 \
   || die "'$_base' is not a valid git revision"
 
@@ -33,7 +37,8 @@ mkdir -p "$LEO_DIR"
   echo "| # | Hunk | Delta | Task | Why | If deleted |"
   echo "|---|------|-------|------|-----|------------|"
 
-  git diff -U0 "$_base" | awk '
+  _idx=$(base_index "$_base")
+  GIT_INDEX_FILE="$_idx" git diff -U0 "$_base" | awk '
     function flush() {
       if (open) { n++; printf "| %d | `%s:%s` | +%d/-%d |  |  |  |\n", n, file, start, add, del }
       open = 0; add = 0; del = 0
@@ -53,13 +58,15 @@ mkdir -p "$LEO_DIR"
 
   # A new file is one row: git has no hunks to split it by, so the reviewer
   # reads the file. Binaries get a row too, but no line count to pretend with.
-  untracked | while IFS= read -r f; do
+  GIT_INDEX_FILE="$_idx" untracked | while IFS= read -r f; do
     if is_text "$f"; then
       printf '| NEW | `%s` | +%s |  |  |  |\n' "$f" "$(wc -l <"$f" 2>/dev/null | tr -d ' ')"
     else
       printf '| NEW | `%s` | binary |  |  |  |\n' "$f"
     fi
   done
+
+  rm -f "$_idx"
 
   echo
   echo "Budget: est ${_est:-?} LOC / actual ${_actual} LOC"

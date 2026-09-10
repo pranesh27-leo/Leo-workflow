@@ -32,3 +32,7 @@ serena_install() {
     say "claude mcp add serena -- serena start-mcp-server --context claude-code --project '${ROOT:-.}'"
   fi
 }
+
+# Invoked: the agent calls this at a moment, so the mark it leaves is the agent
+# saying so -- `leo use serena`. See the tools section in core/lib.sh.
+serena_kind() { printf 'invoked'; }

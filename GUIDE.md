@@ -50,16 +50,27 @@ every hunk it wrote, and put that accounting where git will keep it.**
 Two cycles. Seven stages in the first, four in the second:
 
 ```
-CYCLE ONE -- build it
-grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  commit
-           leo plan  leo task  leo task     write it  leo scan     leo commit
-                     T1        T1 --sub "x"           leo check    <- yours
+CYCLE ONE -- build it            (once per part of the change)
+grill  ->  plan  ->  task  ->  subtask  ->  build  ->  manifest  ->  record
+           leo plan  leo task  leo task     write it  leo scan     leo check
+                     T1        T1 --sub "x"           leo check    leo record
                                                                        |
+      nothing is in git yet. Run cycle one again, or when it all looks right:
+                                                                       v
+                                                                    leo commit
+                                                                    <- yours
 CYCLE TWO -- read it, in a new session                                 v
 brief  ->  read  ->  findings  ->  close
 leo review <sha>   the diff vs     leo review --close  <- yours
                    STANDARDS.md
 ```
+
+A cycle ends at `leo record`, not at a commit. The record is the commit message
+that cycle would have written — subject, goal, manifest, session — filed under
+`.leo/commits/` and not landed. `leo commit` then folds every record into a
+single commit, once, when you have seen the whole change. Deciding a *cycle* is
+finished and deciding a *change* is done are different judgements, and only the
+second one is worth interrupting you for.
 
 Cycle one writes code and cannot review it. Cycle two reads a commit that
 already exists and cannot edit it — section 6.
@@ -79,7 +90,8 @@ Three files hold everything. All three are plain markdown you can read and edit.
 |---|---|---|
 | `.leo/plan.md` | what the change is *allowed* to be | you and the agent, before any code |
 | `.leo/manifest.md` | one row per hunk: which task it serves, why, what breaks without it | the agent, after the code |
-| commit message | the manifest, permanently | `leo commit`, run by you |
+| `.leo/commits/*.md` | one recorded cycle: its message, waiting to land | `leo record`, run by the agent |
+| commit message | every record, permanently | `leo commit`, run by you |
 | `.leo/reviews/<sha>.md` | one row per finding against a commit that landed | the reviewer, in cycle two |
 
 And one word you need: a **hunk** is a contiguous block of changed lines that
@@ -95,7 +107,9 @@ The loop:
    agent        leo scan            diff -> ~20 rows, judgement columns blank
    agent        (fills the rows)    which task, why, what breaks without it
    agent        leo check           rules, scope, budget, tests -- then STOPS
-   you          leo commit "..."    you decide it is done. It refuses without a tty.
+   agent        leo record "..."    files the message; nothing reaches git
+   ...          (repeat, per part)  each cycle starts from the last record
+   you          leo commit          you decide it is done. It refuses without a tty.
 ```
 
 ### Two documents, one authority
@@ -541,24 +555,63 @@ paid for again on every turn that follows — the cost of a session grows with
 the square of its length. Measured on real sessions here: halving a 357-turn
 session would have cost 33% of its tokens, not 50%.
 
-The practical consequence is the advice at the end of `leo commit`: **finish a
-task, commit, start a fresh session.** `.leo/tasks/` exists so that costs you
+The practical consequence is the advice at the end of `leo record`: **finish a
+task, record it, start a fresh session.** Waiting for the commit would mean
+holding one session open across every cycle of the change, which is the worst
+shape available. `.leo/tasks/` exists so that costs you
 nothing — the next session reads a plan and a task file instead of inheriting
 four hours of tool output. On the growth rates measured here, six short
 sessions cost roughly a seventh of one long one doing the same work.
 
-### Step 7 — You commit
+### Step 7 — The agent records the cycle
 
-The agent stops here. It shows you the command and waits:
+Checks pass, so the agent writes down the commit message this cycle earned —
+and does not commit it:
 
-```
-Checks pass. 3 files, +40 lines, every hunk mapped to T1/T2.
-Ready when you are:
-
-    leo commit "api: cap each key at 60 requests per minute"
+```sh
+leo record "api: cap each key at 60 requests per minute"
 ```
 
-If it tries to run that itself, it gets turned away:
+```
+ok   recorded 001 — nothing committed
+     api: cap each key at 60 requests per minute
+     .leo/commits/001.md
+
+1 cycle(s) recorded. The change is not in git yet.
+  read them back: leo commit --list
+  land them all:  leo commit          <- the developer's, and one commit
+```
+
+`.leo/commits/001.md` holds the subject, the plan's goal, the whole manifest,
+and the session the work was done in — everything `leo commit` used to put
+straight into a commit message. The manifest is cleared, because it is inside
+the record now.
+
+The record also stores the git *tree* the cycle left behind. That is what makes
+the next cycle work: `leo scan` with no argument diffs against that tree rather
+than `HEAD`, so cycle two's manifest holds cycle two's hunks and not cycle
+one's a second time. Nothing was committed, so `HEAD` on its own would keep
+pointing at the start of the whole change.
+
+An agent may run `leo record` — it writes no history, touches no index, and
+undoing it is deleting one file.
+
+### Step 8 — You commit, once
+
+Repeat cycle one for as many parts as the change has. Then look at what is
+waiting:
+
+```
+$ leo commit --list
+
+2 cycle(s) recorded, none of them in git
+  001  api: cap each key at 60 requests per minute
+      2026-09-10 08:12 UTC
+  002  api: return a 429 body worth reading
+      2026-09-10 09:41 UTC
+```
+
+If the agent tries to land them itself, it gets turned away:
 
 ```
 ERR  leo commit needs a human at a terminal
@@ -567,21 +620,177 @@ If you are an agent: do not commit. Show the developer what you would run,
 and stop there. They decide when the change is done.
 ```
 
-When *you* run it:
+When *you* run it, one subject covers all of it:
 
 ```
-about to commit
+$ leo commit
+
+2 cycle(s) recorded
   api: cap each key at 60 requests per minute
-  3 file(s), 40 lines
+  api: return a 429 body worth reading
+
+One subject for all of it:
+> api: per-key rate limiting
+
+about to commit
+  api: per-key rate limiting
+  4 file(s), 61 lines
+  2 recorded cycle(s), landing as one commit
 commit? [y/N] y
-[main 989f945] api: cap each key at 60 requests per minute
- 3 files changed, 40 insertions(+)
- create mode 100644 limiter.py
 ok   committed 989f945
+     2 recorded cycle(s) landed as one commit
 ```
 
-If any hunk in the commit still serves no task, the prompt says so before you
-answer — a last look at what you are about to make permanent.
+Pass the subject as an argument to skip the prompt (`leo commit "api: per-key
+rate limiting"`). With exactly one record its own subject is the default, so
+`leo commit` alone is enough.
+
+Each record becomes its own section of the message, in the order the cycles
+happened — its subject, its session, its goal, its manifest. They are not
+merged: which hunks were reviewed together, against which goal, is the part
+worth keeping.
+
+If any hunk still serves no task, or files changed after the last record and so
+belong to no manifest, the prompt says so before you answer — a last look at
+what you are about to make permanent.
+
+A change small enough to be one cycle never needs a record: `leo commit
+"<subject>"` with nothing recorded commits the manifest directly, exactly as it
+did before records existed.
+
+---
+
+## 5c. The tool switches, and what makes them switches
+
+`leo session --mode coding` declares that this work wants a code index and an
+output filter. For most of leo's life that declaration did nothing: six of the
+seven capabilities changed no behaviour at all, on or off. A mode was a label.
+
+It is a switch now, and the mechanism is worth understanding because it is the
+only one available.
+
+**leo cannot make an agent use a tool, or stop it.** It is a shell script that
+runs before and after the agent, not a supervisor. What it can do is what it
+already does for the grill: refuse to pass until the mark is there.
+
+```sh
+leo use serena
+```
+
+```
+ok   using Serena
+  .leo/tools/serena.md   <- how it is meant to be used here
+```
+
+That single command is both halves at once. It prints the line **you** see —
+which tool is being used, right now, as it happens — and writes the line
+`leo check` reads. They cannot drift apart, because they are the same action.
+A standing order to "tell the developer which tool you are using" would be
+prose, and prose stops happening halfway through a session with nothing
+noticing.
+
+### Two kinds of tool, because there are two kinds of evidence
+
+**Invoked** — `serena`, `graph`. The agent calls them at a moment. The mark is
+the announcement, and `leo check` fails if a tool is ON and the ledger has no
+line for it.
+
+**Ambient** — `rtk`, `headroom`, `ponytail`, `caveman`. These wrap the whole
+session; they are not *used* at a moment, they are *in effect*. Asking the
+agent to announce one at some arbitrary point would be theatre, and would teach
+it to log noise to pass a check. The evidence is the adapter's own `_present`.
+
+An adapter declares which it is, and `ambient` is the default:
+
+```sh
+mytool_kind() { printf 'invoked'; }
+```
+
+### Turning one off means off
+
+```
+$ leo use caveman
+ERR  Caveman is OFF in this session — do not use it
+
+The mode is the developer's. If this work genuinely needs caveman, say so
+and show them the command. Do not turn it on yourself.
+
+  theirs to run:  leo session --caveman on
+```
+
+That exits non-zero, and it **also writes the attempt to `.leo/used`**. Refusing
+is prevention; recording is detection. An agent that reads the refusal and stops
+is the point — one that reads it and carries on has left a line that fails the
+check:
+
+```
+tools
+ERR  Caveman is OFF and was used anyway, after leo refused it
+  the mode is the developer's — .leo/used records the attempt
+```
+
+### What this does not do, stated plainly
+
+An agent that uses an invoked tool and never runs `leo use` is invisible to
+this. Attestation catches the careless case, not the deceptive one.
+
+That is still the difference between a switch and a label, and it is the same
+trade the grill already makes: nothing stops an agent writing "grilled: yes"
+without asking a question. What the mark buys you is that the *default* path —
+the one an agent follows when it is not actively working around you — now runs
+through a check that can fail.
+
+Two things deliberately do **not** fail the check:
+
+- A tool that is ON but **not installed**. It could not have been used, so
+  blaming the agent would be blaming the wrong party. `leo session` reports it
+  where it is actionable, and `leo check` stays quiet — a passing check must not
+  print four lines about your machine's setup on every run, forever.
+- A tool that is ON in a change small enough not to need it. That one *does*
+  fail, and the answer is one command: `leo session --serena off` says this work
+  does not want it. The switch is yours; the check only insists the two agree.
+
+### TDD is a switch too
+
+With `tdd` ON, `leo task` seeds the red-before-green steps into the to-do. That
+used to be all it did. Now `leo check` fails while the "watch it FAIL" step is
+unticked and hunks are already in the manifest — code exists, and nothing ever
+watched a test fail for the reason it was meant to:
+
+```
+tdd
+ERR  T1 has hunks in the manifest but never watched a test fail
+  - [ ] run it, watch it FAIL, and confirm it failed for the reason you expect
+  tick it once you have, or turn the practice off: leo session --tdd off
+```
+
+Only when leo seeded the step. A task file written before TDD was switched on
+has no such line, and inventing a failure for its absence would punish you for
+changing your mind.
+
+### Where the skills live
+
+The vendored grill is installed twice, and the second one is the one that
+works:
+
+| Path | What it is |
+|---|---|
+| `.leo/skills/grilling/SKILL.md` | the canonical copy — vendored, unmodified, yours to read |
+| `.claude/skills/grilling/SKILL.md` | what Claude Code actually loads |
+
+Before this, only the first existed. No runtime reads `.leo/skills/`, so
+`/grill-me` was not a command anywhere, and `leo check` failed ungrilled tasks
+while pointing at a file nothing had registered. The `SKILLS-REACHABLE` rule
+now fails the build if a skill ships without a reachable copy.
+
+Both are **inside the repository**, so they apply to work in this repo and
+nowhere else — unlike `~/.claude/skills/`, which would follow you into every
+project. And both are tracked in git, so a fresh clone has a working grill
+without anyone running anything.
+
+leo installs for Claude Code only, and says so rather than guessing. Cursor,
+Codex and Aider each have their own convention, and inventing three more paths
+from memory is how you get three more dangling pointers instead of one.
 
 ---
 
@@ -1085,10 +1294,14 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo plan` | either | shows the plan and where it stands |
 | `leo task T1` | agent | gives one plan task its own file and to-do, or shows it |
 | `leo task` | either | every task, its to-do progress and its plan status |
+| `leo use <name>` | agent | announces the tool it is about to use and logs it to `.leo/used` |
+| `leo use --list` | either | the tools used this cycle |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
 | `leo check` | agent | rules, unreviewed hunks, invented IDs, grill, budget, tests — quiet on success |
 | `leo check --verbose` | agent | the same, printing every stage |
-| `leo commit "<subject>"` | **you only** | commits with the manifest in the message |
+| `leo record "<subject>"` | agent | ends the cycle without landing it: files the commit message under `.leo/commits/`, clears the manifest |
+| `leo commit ["<subject>"]` | **you only** | lands every recorded cycle as one commit. With nothing recorded, commits the manifest directly. |
+| `leo commit --list` | either | the cycles recorded and still not in git |
 | `leo review [<rev>]` | agent | opens cycle two: a review of a landed commit, briefed from the dev cycle |
 | `leo review --close` | **you only** | the gate of cycle two: vocabulary, no open blocker, a real verdict |
 | `leo review --list` | either | every review and where each one stands |
@@ -1097,6 +1310,9 @@ in the commit message anyway, and tracking it records the same intent twice.
 
 `leo scan main` reviews against a branch instead of `HEAD`; `leo check` then
 measures against the same base automatically, so the two can never disagree.
+With cycles already recorded, the default base is the tree the last record left
+behind rather than `HEAD` — otherwise each manifest would re-enumerate every
+hunk the earlier cycles already accounted for.
 
 ### Files
 
@@ -1113,6 +1329,9 @@ measures against the same base automatically, so the two can never disagree.
 | `.leo/plan.md` | no | current change |
 | `.leo/tasks/*.md` | no | one per task: "Done when", a to-do, notes |
 | `.leo/manifest.md` | no | current scope table |
+| `.leo/commits/*.md` | no | one per cycle recorded but not yet landed |
+| `.leo/used` | no | which declared tools built this cycle's hunks |
+| `.claude/skills/*/SKILL.md` | **yes** | the vendored skills, where Claude Code reads them |
 | `.leo/review/STANDARDS.md` | yes | the rubric cycle two argues against — yours to amend |
 | `.leo/reviews/*.md` | **yes** | one review per commit. The only copy there is. |
 

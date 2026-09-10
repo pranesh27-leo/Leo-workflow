@@ -39,3 +39,9 @@ tdd_advice() {
   say "red before green: the test fails first, for the reason you expect"
   say "leo task seeds the to-do with those steps while this is on"
 }
+
+# Not a tool the agent invokes and not something wrapping the session: a
+# practice, which `leo check` gates in a stage of its own. Naming the kind
+# keeps it out of the tools stage, where "announce that you are using TDD"
+# would be a line with no meaning behind it.
+tdd_kind() { printf 'practice'; }

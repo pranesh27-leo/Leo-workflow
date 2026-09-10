@@ -32,3 +32,7 @@ rtk_install() {
   fi
   say "rtk init -g"
 }
+
+# Ambient: this wraps the session rather than being called at a moment, so
+# `_present` is the evidence and the agent is never asked to announce it.
+rtk_kind() { printf 'ambient'; }

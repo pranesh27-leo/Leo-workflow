@@ -179,23 +179,33 @@ _ctx=$(
   [ "$_range" -eq 1 ] && printf 'Range:   %s\n' "$_rev"
   printf 'Subject: %s\n' "$_subject"
 
-  # The goal and the trailers leo itself wrote into the message.
-  _goal=$(printf '%s\n' "$_msg" | sed -n 's/^Goal: *//p' | head -1)
-  [ -n "$_goal" ] && printf 'Goal:    %s\n' "$_goal"
-  _sess=$(printf '%s\n' "$_msg" | sed -n 's/^Session: *//p' | head -1)
-  [ -n "$_sess" ] && printf 'Session: %s\n' "$_sess"
+  # The goal and the trailers leo itself wrote into the message. A commit that
+  # landed several recorded cycles carries one of each per cycle, so these take
+  # every distinct value rather than the first: dropping the later ones would
+  # brief the reviewer on part of a change and let them read all of it.
+  _goal=$(printf '%s\n' "$_msg" | sed -n 's/^Goal: *//p' | awk '!seen[$0]++')
+  [ -n "$_goal" ] && printf '%s\n' "$_goal" | sed '1s/^/Goal:    /; 2,$s/^/         /'
+  _sess=$(printf '%s\n' "$_msg" | sed -n 's/^Session: *//p' | awk '!seen[$0]++')
+  [ -n "$_sess" ] && printf '%s\n' "$_sess" | sed '1s/^/Session: /; 2,$s/^/         /'
   _by=$(printf '%s\n' "$_msg" | sed -n 's/^Assisted-by: *//p' | head -1)
   [ -n "$_by" ] && printf 'Written: %s\n' "$_by"
 
   # The manifest, straight out of the commit message. This is the dev cycle's
   # own answer to "why does this hunk exist", and the review's job is to test
   # it against the code -- not to write it again.
-  _man=$(printf '%s\n' "$_msg" | grep '^| ' || true)
+  # One table, however many cycles were recorded into this commit: the column
+  # header repeats once per section in the message, and a reviewer does not
+  # need to be told what the columns are three times. The rows themselves are
+  # all kept -- every hunk of the change belongs in the reviewer's table.
+  _man=$(printf '%s\n' "$_msg" | grep '^| ' | awk '
+    /^\| *# *\| *Hunk/ { if (hdr++) next }
+    { print }' || true)
   if [ -n "$_man" ]; then
     printf '\n### The manifest this commit was made with\n\n'
     printf '%s\n' "$_man"
-    _b=$(printf '%s\n' "$_msg" | grep '^Budget:' || true)
-    _t=$(printf '%s\n' "$_msg" | grep '^Tests:'  || true)
+    # Distinct values only, for the same reason.
+    _b=$(printf '%s\n' "$_msg" | grep '^Budget:' | awk '!seen[$0]++' || true)
+    _t=$(printf '%s\n' "$_msg" | grep '^Tests:'  | awk '!seen[$0]++' || true)
     [ -n "$_b" ] && printf '\n%s\n' "$_b"
     [ -n "$_t" ] && printf '%s\n' "$_t"
   else

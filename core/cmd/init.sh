@@ -67,6 +67,29 @@ for _s in skills/grilling/SKILL.md skills/grill-me/SKILL.md \
   put "$_s" ".leo/$_s"
 done
 
+# ...and again, where the agent's runtime will actually find them.
+#
+# This is the bug that made the whole thing worth fixing: leo vendored the
+# grill into .leo/skills/, no runtime reads that path, and the skill shipped
+# doing nothing for anyone who did not wire it up by hand. .leo/skills/ stays
+# the canonical copy -- it is what SKILLS-REACHABLE compares against -- and
+# this is the working one.
+#
+# Claude Code only, and leo says so rather than guessing. Cursor, Codex and
+# Aider each have their own convention; inventing three more paths from memory
+# is how you get three more dangling pointers instead of one. `leo session`
+# names the runtime these are wired for, so a team on something else can see
+# at a glance that this part is not for them.
+#
+# Repository-scoped by construction: .claude/skills/ inside the repo applies to
+# work in this repo, unlike ~/.claude/skills/ which would follow the developer
+# everywhere. And tracked, not ignored -- a skill that only works for whoever
+# last ran `leo init` is the same failure one level down.
+for _s in grilling grill-me; do
+  tmpl_has "skills/$_s/SKILL.md" || continue
+  put "skills/$_s/SKILL.md" ".claude/skills/$_s/SKILL.md"
+done
+
 if [ ! -f .leo/config ] || [ "$_force" -eq 1 ]; then
   cat > .leo/config <<'CONF'
 # leo config — plain shell, committed with the repo.
@@ -81,9 +104,11 @@ CONF
   info "  install .leo/config"
 fi
 
-# The plan, the manifest and the session are working state; they end up in
-# commit messages, so they should not also be tracked as files.
-for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session" ".leo/tasks/"; do
+# The plan, the manifest, the session and the recorded-but-unlanded cycles are
+# working state; they end up in commit messages, so they should not also be
+# tracked as files.
+for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session" ".leo/tasks/" \
+               ".leo/commits/" ".leo/used"; do
   grep -qxF "$_ignore" .gitignore 2>/dev/null || {
     printf '%s\n' "$_ignore" >> .gitignore
     info "  update  .gitignore ($_ignore)"

@@ -11,8 +11,11 @@ CYCLE ONE — build it
   Agent  leo task T1              each task gets a file and a to-do
   Agent  builds it one task at a time, updating Status as it goes
   Agent  leo scan                 500 lines -> ~20 rows, one per hunk
-  Agent  leo check                rules, scope, budget, tests -- then STOPS
-  You    leo commit "api: ..."    you decide the change is done, not it
+  Agent  leo use serena           announces the tool, and logs that it did
+  Agent  leo check                rules, scope, tools, budget, tests -- STOPS
+  Agent  leo record "api: ..."    the cycle's message, filed, not committed
+  ...    repeat for the next cycle -- nothing is in git yet
+  You    leo commit               one commit, every recorded cycle in it
 
 CYCLE TWO — read it, in a new session
   You    leo session --mode review
@@ -44,14 +47,29 @@ COMMANDS
                           never get files of their own, and each arrives
                           ungrilled -- it is grilled before it is built,
                           exactly as its parent was.
+  use <name>              say which tool you are about to use. Prints it for
+                          the developer and logs it to .leo/used, in one
+                          action, so what they see is what \`leo check\` reads.
+                          Refuses a tool the session has switched off, and
+                          records that it was asked for.
+  use --list              the tools used this cycle
   scan [base]             enumerate hunks into .leo/manifest.md
   check [--verbose]       rules + unreviewed hunks + invented task IDs
-                          + grill + budget + tests. Quiet when it passes,
+                          + grill + tools + TDD + budget + tests. A tool the
+                          session declares ON must have left evidence it was
+                          used; one that is OFF must have left none. Quiet when it passes,
                           loud when it does not -- every line a passing check
                           prints is re-read on every later turn. --verbose
                           shows each stage.
-  commit "<subject>"      commit with the manifest in the message.
+  record "<subject>"      end the cycle without ending the change: check it,
+                          file the commit message this cycle would have made
+                          into .leo/commits/, clear the manifest, stop. Nothing
+                          reaches git, so an agent may run this.
+  commit ["<subject>"]    land it. Every recorded cycle becomes a section of
+                          one commit message, in order. With nothing recorded
+                          it commits the manifest directly, as it always did.
                           Refuses without a human at a terminal.
+  commit --list           the cycles recorded and still not in git
   review [<rev>]          open cycle two: a review of a commit that has
                           already landed, briefed from the dev cycle that
                           made it -- goal, manifest, non-goals and the
@@ -80,6 +98,13 @@ FILES
   .leo/plan.md            current change (gitignored — it lands in the commit)
   .leo/tasks/*.md         one per task: "Done when", a to-do, notes (same)
   .leo/manifest.md        current scope table (same)
+  .leo/used               which declared tools built this cycle's hunks (same)
+  .claude/skills/*/       the vendored skills, installed where Claude Code
+                          actually reads them. TRACKED: a skill that only
+                          works for whoever last ran \`leo init\` is no skill.
+  .leo/commits/*.md       one per cycle recorded but not yet landed. Gitignored
+                          for the same reason as the rest: each one ends up
+                          inside the commit message it describes.
   .leo/review/STANDARDS.md what cycle two argues against — yours to amend
   .leo/reviews/*.md       one review per commit. TRACKED, not gitignored:
                           the plan and the manifest end up inside the commit
@@ -93,6 +118,7 @@ AFTER A DISCONNECT
     leo task              every task and how far its to-do got
     git diff HEAD         the code, still there
     cat .leo/manifest.md  the review table, as far as it got
+    leo commit --list     the cycles already recorded, still waiting to land
 
 WHY
   The diff shows what changed. The manifest shows why each hunk exists and what

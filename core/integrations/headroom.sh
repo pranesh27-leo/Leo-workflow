@@ -26,3 +26,7 @@ headroom_advice() {
 headroom_install() {
   say "uv tool install --python 3.13 'headroom-ai[all]'"
 }
+
+# Ambient: this wraps the session rather than being called at a moment, so
+# `_present` is the evidence and the agent is never asked to announce it.
+headroom_kind() { printf 'ambient'; }

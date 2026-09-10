@@ -45,3 +45,7 @@ graph_advice() {
       say "detect_changes maps this diff to the symbols it touches — read it before leo scan" ;;
   esac
 }
+
+# Invoked: the agent calls this at a moment, so the mark it leaves is the agent
+# saying so -- `leo use graph`. See the tools section in core/lib.sh.
+graph_kind() { printf 'invoked'; }

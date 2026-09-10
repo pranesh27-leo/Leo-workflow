@@ -41,3 +41,7 @@ caveman_advice() {
 caveman_install() {
   say "npx --yes skills add JuliusBrussee/caveman"
 }
+
+# Ambient: this wraps the session rather than being called at a moment, so
+# `_present` is the evidence and the agent is never asked to announce it.
+caveman_kind() { printf 'ambient'; }

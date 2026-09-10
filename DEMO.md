@@ -320,10 +320,10 @@ tree, and the diff does not care that it was setup.
 
 ---
 
-## 6b. Two things this walkthrough predates
+## 6b. Four things this walkthrough predates
 
-leo gained both of these after the session below was recorded, so they do not
-appear in the transcript. They are part of the loop now.
+leo gained all four of these after the session below was recorded, so they do
+not appear in the transcript. They are part of the loop now.
 
 **Subtasks.** A task that turns out to hold more than one decision gets split
 rather than guessed at:
@@ -350,6 +350,32 @@ It is the only thing in a task file that blocks anything. Everything else
 there is a working note. A task nobody questioned is a task built on whatever
 the agent assumed, and the assumption becomes code before anyone reads it.
 
+**The record stage.** A cycle now ends at `leo record`, not at a commit:
+
+```sh
+leo record "types: report every Path attribute in to_info_dict"
+```
+
+That files the commit message the cycle earned — subject, goal, manifest,
+session — under `.leo/commits/` and lands nothing. Run cycle one again for the
+next part; `leo commit` then folds every record into a single commit, once, when
+you have seen the whole change. The change below is one cycle, so what you see
+in sections 10 and 11 is `leo commit` with nothing recorded — the same command
+it always was, and still the shortest path for a change that fits in one cycle.
+
+**The tool switches became switches.** When this was recorded, `leo session`
+was a declaration: it printed which capabilities the mode wanted and checked
+none of them, so six of the seven changed no behaviour at all. Now the agent
+announces a tool before using it —
+
+```sh
+leo use serena
+```
+
+— which prints it for you and logs it in one action. `leo check` gained a
+`tools` stage: ON and never used fails, OFF and used anyway fails. The check
+blocks below predate that stage, so it does not appear in them.
+
 **One more difference you will notice immediately:** `leo check` is quiet when
 it passes — three lines, not twenty-six. Every line a passing check prints is
 re-read by the agent on every later turn, and a passing check is the least
@@ -359,8 +385,10 @@ failing checks below are still shown in full, because failures stay loud.
 > **A note on this transcript.** The session below was run against the real
 > `click` repository and the output is what leo printed at the time. The
 > `grill` stage was added to leo afterwards, so its lines in the check blocks
-> below were inserted by hand to match what the current tool prints — they are
-> the only lines here that were not produced by running the command. If you
+> below were inserted by hand to match what the current tool prints, as were the
+> `Approval` row in section 9 and the agent refusal in section 10, which the
+> record stage reworded — they are the only lines here that were not produced by
+> running the command. If you
 > follow this walkthrough today and your output differs anywhere else, trust
 > your terminal and open an issue.
 
@@ -494,7 +522,7 @@ leo session report
   Change size   3 file(s), 28 lines
   Manifest      4 hunk(s), 4 reviewed, 0 serving no task
   Tests         `.venv/bin/python -m pytest -q` -- passed, 2026-09-04 05:08 UTC
-  Approval      PENDING — leo commit is yours
+  Approval      PENDING — leo record ends this cycle, leo commit is yours
 
   no token figures here on purpose: the tools above measure different
   things over overlapping buffers, and summing them would be fiction.
@@ -513,8 +541,8 @@ numbers produces one that is false.
 $ leo commit "types: report every Path attribute in to_info_dict"   # as an agent
 ERR  leo commit needs a human at a terminal
 
-If you are an agent: do not commit. Show the developer what you would run,
-and stop there. They decide when the change is done.
+If you are an agent: do not commit. Record the cycle instead --
+leo record "<subject>" -- and show them: leo commit
 
 If you are a human whose shell has no tty (a script, CI): LEO_YES=1 leo commit ...
 exit=2
