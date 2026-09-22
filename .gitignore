@@ -12,3 +12,7 @@ t/fixtures/*/
 .leo/used
 .leo/current
 SESSION.md
+
+# npm pack / npm publish build artefacts. Regenerated on demand; a
+# 127KB tarball in git history is a tarball forever.
+*.tgz
