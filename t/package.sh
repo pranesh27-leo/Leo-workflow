@@ -58,7 +58,39 @@ else
   bad "bin entry is missing or points at nothing: '$bin'"
 fi
 
-# 3. leo is bash, not node. Declaring an os list is the honest way to fail on
+# 3. The URLs have to be the repository this actually lives in.
+#
+#    npm renders homepage, repository and bugs as the three links on the
+#    package page, and they are the only route a stranger has back to the
+#    source or to filing a bug. 0.6.0 shipped with all three pointing at
+#    github.com/leo-workflow/leo, which does not exist -- invented while
+#    writing the manifest and never checked against anything. A published
+#    version cannot be overwritten, so the fix cost a release.
+#
+#    Compared against `git remote get-url origin`, not fetched: a test that
+#    needs the network is a test that fails on a train, and the thing worth
+#    checking here is agreement with the repository we are standing in.
+remote=$(git remote get-url origin 2>/dev/null \
+         | sed 's|^git+||; s|\.git$||; s|/*$||')
+if [ -z "$remote" ]; then
+  printf '  skip  no git remote to compare the package URLs against\n'
+else
+  bad_url=""
+  for field in homepage repository bugs; do
+    got=$(sed -n "/\"$field\"/,/[},]/p" package.json \
+          | sed -n 's|.*"\(https://[^"#]*\)[^"]*".*|\1|p' \
+          | sed 's|^git+||; s|\.git$||; s|/issues$||; s|/*$||' | head -1)
+    [ -n "$got" ] || { bad_url="$bad_url $field:missing"; continue; }
+    [ "$got" = "$remote" ] || bad_url="$bad_url $field:$got"
+  done
+  if [ -z "$bad_url" ]; then
+    ok "homepage, repository and bugs all point at $remote"
+  else
+    bad "package URLs disagree with the git remote ($remote):$bad_url"
+  fi
+fi
+
+# 4. leo is bash, not node. Declaring an os list is the honest way to fail on
 #    Windows at install time rather than at first run.
 grep -q '"os"' package.json \
   && ok "package.json declares the platforms this runs on" \
