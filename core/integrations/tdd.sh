@@ -45,3 +45,7 @@ tdd_advice() {
 # keeps it out of the tools stage, where "announce that you are using TDD"
 # would be a line with no meaning behind it.
 tdd_kind() { printf 'practice'; }
+
+tdd_oneline() {
+  printf 'Write the test first, watch it FAIL for the reason you expect, then implement. leo check gates it.'
+}

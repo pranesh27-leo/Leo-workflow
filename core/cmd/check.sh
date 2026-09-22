@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# desc: run the rules, the manifest, the grill, the tools, TDD, the budget and the tests
+# desc: run the rules, the documents, the manifest, the grill, the tools, TDD, the budget and the tests
 # usage: leo check [--verbose]
 #
-# Seven checks, in the order that catches mistakes cheapest-first. Read this file
+# Eight checks, in the order that catches mistakes cheapest-first. Read this file
 # top to bottom -- there is no plugin system and no hidden ordering.
 #
 # Quiet on success, loud on failure. This used to print 26 lines every time it
@@ -26,7 +26,11 @@ done
 # replayed whole -- a failure is rare and the detail is the entire point. On
 # success only the warnings and one summary line survive.
 _buf=$(mktemp "${TMPDIR:-/tmp}/leo-check.XXXXXX")
-trap 'rm -f "$_buf"' EXIT
+# Registered, not trapped. `trap ... EXIT` here would replace the one lib.sh
+# installed, and the session document would then never be written for the one
+# command whose result is most worth having on disk -- the check that failed.
+# See the exit-hooks section in core/lib.sh.
+leo_atexit_add 'rm -f "$_buf"'
 if [ "$_verbose" -eq 0 ]; then
   exec 3>&2 2>"$_buf"
 fi
@@ -77,7 +81,56 @@ for _rule in "$RULES"/*.md; do
 done
 [ "$_n" -eq 0 ] && dim "  no rules yet — write one the next time you fix a real bug"
 
-# --- 2. manifest ----------------------------------------------------------
+# --- 2. documents ---------------------------------------------------------
+# The instructions the agent is working from. Two different failures:
+#
+#   stale   AGENTS.md carries a tools block describing a session nobody is in.
+#           This fails. A stale block is worse than no block, because it is
+#           believed: the agent reads "serena is ON" an hour after the
+#           developer switched it off, uses it, and `leo use` records the
+#           refusal that the tools stage then fails on -- two stages apart from
+#           the actual cause.
+#   missing a companion document does not exist. This warns. A repository can
+#           reasonably not have written ARCHITECTURE.md yet, and failing every
+#           check until somebody does would make `leo init` a chore rather than
+#           a start.
+#
+# The fingerprint is compared inline rather than by shelling out to `leo
+# agents --check`. This runs on every check, and a subprocess that loads the
+# whole library again to answer one string comparison is the kind of cost that
+# is invisible until somebody measures a slow check.
+head_ "documents"
+if [ -f "$ROOT/AGENTS.md" ]; then
+  if grep -q '<!-- leo:tools begin' "$ROOT/AGENTS.md"; then
+    _have=$(sed -n 's/.*leo:tools begin fingerprint=\([a-z0-9]*\).*/\1/p' \
+              "$ROOT/AGENTS.md" | head -1)
+    _want=$(cap_fingerprint)
+    if [ "$_have" = "$_want" ]; then
+      ok "AGENTS.md describes this session"
+    elif [ "$_have" = "none" ] || [ -z "$_have" ]; then
+      # The placeholder the template ships with. "Never written" and "written
+      # and now wrong" are different states and only the second one is a lie:
+      # an untouched block tells the agent nothing, while a stale one tells it
+      # something false. A fresh `leo init` must not fail a check for a command
+      # the developer has not had a reason to run yet.
+      warn "AGENTS.md has no tools block yet — leo agents --ask, then --auto"
+    else
+      err "AGENTS.md describes a different session — the agent is reading stale instructions"
+      dim "  block says $_have, the session is $_want"
+      dim "  refresh it: leo agents --auto"
+      _fail=1
+    fi
+  else
+    warn "AGENTS.md has no tools block — leo agents --ask, then leo agents --auto"
+  fi
+fi
+_nodoc=""
+for _d in CONTEXT.md ARCHITECTURE.md CODE_REVIEW.md RULES.md; do
+  [ -f "$ROOT/$_d" ] || _nodoc="$_nodoc $_d"
+done
+[ -n "$_nodoc" ] && warn "missing:$_nodoc — leo docs --write"
+
+# --- 3. manifest ----------------------------------------------------------
 # Every hunk must name the task it serves, and that task must be one the plan
 # actually declared. Those two together are what turns "500 lines arrived" into
 # "these 40 lines are here because someone felt like it".
@@ -165,7 +218,7 @@ else
   fi
 fi
 
-# --- 3. grill -------------------------------------------------------------
+# --- 4. grill -------------------------------------------------------------
 # Every task is grilled, and so is every subtask. This is the one place in leo
 # where a task file blocks anything, and it is deliberate: a task nobody
 # questioned is a task built on whatever the agent assumed, and the assumption
@@ -185,7 +238,12 @@ elif [ ! -f "$(task_file "$_task")" ]; then
   warn "$_task has no file yet — run: leo task $_task"
 else
   _tf=$(task_file "$_task")
-  _un=$(grep -c 'leo:ungrilled' "$_tf" 2>/dev/null || true)
+  # task_ungrilled, not a bare grep: a subtask that has been deferred carries
+  # the ungrilled marker and must not count. Grilling work that is explicitly
+  # not happening means answering questions about code nobody is going to
+  # write, and the answers would be guesses -- which is the thing the grill
+  # exists to prevent, arriving through the gate that enforces it.
+  _un=$(task_ungrilled "$_task")
   _un=${_un:-0}
   if [ "$_un" -gt 0 ]; then
     err "$_task is ungrilled ($_un section(s)) — grill it, record what it settled"
@@ -195,9 +253,24 @@ else
   else
     ok "$_task has been grilled"
   fi
+  # Said once, here, where the grill stage already has the file open. A
+  # deferred subtask is a decision somebody made and it belongs in the record;
+  # it is not a failure and never blocks.
+  _ls=$(task_later_subs "$_task")
+  [ -n "$_ls" ] && dim "  later inside $_task: $_ls"
 fi
 
-# --- 4. tools -------------------------------------------------------------
+# Deferred tasks, reported and never failed. The plan says what this change is
+# allowed to be; "later" says which parts of it are not being attempted now,
+# and a reviewer reading the commit needs both.
+# dim, not warn. A deferral is stable state, not news: it was already decided,
+# it is in the plan, in SESSION.md and in the commit message, and a warn here
+# would re-enter the agent's context on every turn of every session for as long
+# as the deferral stands. See .leo/rules/ALWAYS-LOADED.md.
+_pl=$(plan_later)
+[ -n "$_pl" ] && dim "  later work in this plan: $_pl  (leo defer --list)"
+
+# --- 5. tools -------------------------------------------------------------
 # The switch, enforced. A tool that is ON must have left its mark; a tool that
 # is OFF must not have. Which mark depends on the kind -- see the tools section
 # in core/lib.sh for why there are two.
@@ -266,7 +339,7 @@ if [ -n "$MODE" ] && [ -f "$MANIFEST" ]; then
   [ "$_tn" -eq 0 ] && dim "  no tools declared"
 fi
 
-# --- 5. TDD ---------------------------------------------------------------
+# --- 6. TDD ---------------------------------------------------------------
 # The practice, enforced the same way as the grill: a mark leo can grep. With
 # TDD on, `leo task` seeds the red-before-green steps into the to-do; this
 # fails while the "watch it FAIL" step is still unticked and there are already
@@ -293,7 +366,7 @@ if [ "$(cap_state tdd)" = "on" ] && [ -f "$MANIFEST" ]; then
   fi
 fi
 
-# --- 6. budget ------------------------------------------------------------
+# --- 7. budget ------------------------------------------------------------
 # An overshoot past 2x almost always means the requirement was misread, not
 # that the work was genuinely bigger. Re-plan; do not review harder.
 head_ "budget"
@@ -310,7 +383,7 @@ else
   fi
 fi
 
-# --- 7. tests -------------------------------------------------------------
+# --- 8. tests -------------------------------------------------------------
 head_ "tests"
 _result=""
 if [ -z "$TEST_CMD" ]; then

@@ -135,6 +135,25 @@ justifies anything, and then nothing you wrote can ever look unwanted.
 
 Get approval before writing code.
 
+### A new goal is a new plan
+
+`leo plan "<name>"` opens the next one — P1, P2, P3 — and switches to it. Use
+it whenever the developer wants something that is not what the plan in flight
+set out to do. Amending the plan in flight instead is how a change acquires
+hunks serving a goal its own plan never declared, and the manifest has no way
+to say so.
+
+```sh
+leo plan "audit log"      # opens P2 and switches to it
+leo plan --list           # every plan, and which one is in flight
+leo plan --switch P1      # go back
+```
+
+**Task ids never restart.** P1 owns T1..T3, P2 starts at T4. A manifest row
+saying `T4` names one task in this repository forever, which is the property
+the whole manifest rests on. `leo task T1` while P2 is in flight is refused,
+and the refusal names the plan that owns it.
+
 ## 2. Tasks — "make the tasks", "start T1"
 
 Every row of the plan's table gets its own file:
@@ -163,8 +182,9 @@ vendored unmodified and it is the only definition of a grill in this
 repository; do not restate it here and do not invent your own.
 
 Record decisions, not the transcript. A question whose answer was the obvious
-default settled nothing. Scale the grill to the work: a one-line fix earns one
-question, five is theatre, and zero is never allowed.
+default settled nothing. Scale the grill to the work — but scale it to the
+number of decisions in it, never to a number of questions. Zero is the one
+count that is named here, and it is the one that is never allowed.
 
 Break a task up when the grill shows it holds more than one decision:
 
@@ -178,6 +198,29 @@ is built, exactly as its parent was.
 An unticked box still fails nothing — the to-do is your working memory, so a
 session ending mid-task costs nothing. The **grill** is the one thing here
 that blocks: `leo check` fails while the task in flight is ungrilled.
+
+### Later work — "we cannot do that yet"
+
+A task you cannot do now is not done and is not abandoned. It is `later`:
+
+```sh
+leo defer T3 "waiting on the vendor sandbox key"
+leo defer T3.2 "the retry path needs its own grill first"
+leo resume T3
+```
+
+The loop steps over it. No file, no grill, no check failure — and a deferred
+subtask is deliberately *not* grilled, because grilling work that is not
+happening means answering questions about code nobody will write.
+
+It stays visible: in the plan's table, in `leo defer --list`, in `SESSION.md`,
+and in the commit message under `Later:`, with its reason.
+
+**The reason is required, and this is the whole point of the feature.** The
+two things people did before it existed were to mark the task `done` — a lie
+that survives into the commit message and is never caught — or to delete the
+row, which loses the fact that it was ever planned. Both are worse than a
+word. Never do either.
 
 ### End the session when the task ends
 
@@ -319,7 +362,7 @@ passes.
 
 1. **What was asked for**, in the review file. If it is thin, the dev cycle was
    thin, and that is your first finding.
-2. **`.leo/review/STANDARDS.md`** — the rubric, and the only thing a finding
+2. **`CODE_REVIEW.md`** — the rubric, and the only thing a finding
    here has to clear. It is the repository's, not leo's: read the copy in this
    repo, because a team amends it.
 3. **The diff** — `git show <sha>` — against both.
@@ -361,7 +404,56 @@ and on the verdict the template shipped with. **You do not fix the blockers.**
 A fix is a new cycle one — `leo plan "fix: <sha> review"` — and waiving one is
 the developer's, never yours. Say which you would recommend, and wait.
 
-## 7. Resume — "where were we"
+## 7. The documents — before you work, and whenever the session changes
+
+Five files, each answering one question. Four are read on demand; one is read
+on every request and is therefore the one that has to stay short.
+
+| File | Answers | Read |
+|---|---|---|
+| `AGENTS.md` | how do I work here, and what may I use | **every request** |
+| `CONTEXT.md` | what is this project | on demand |
+| `ARCHITECTURE.md` | how do the pieces fit | on demand |
+| `CODE_REVIEW.md` | what does a finding have to clear | cycle two |
+| `RULES.md` | what is enforced, and why | on demand |
+| `SESSION.md` | where is this session right now | after a disconnect |
+
+**Never import one into `AGENTS.md`.** An import makes a read-on-demand file
+always-loaded, and always-loaded bytes are paid for on every request of every
+session forever. That is the most expensive single line anyone can add here.
+
+### The tools block
+
+`AGENTS.md` carries a generated block naming every tool this session allows,
+how leo can tell it was used, its MCP names, and the one instruction that
+changes what you do. It is written by `leo agents`, not by hand:
+
+```sh
+leo agents --ask     # the question to put to the DEVELOPER
+leo agents --auto    # write their answer (or the mode's defaults) into AGENTS.md
+leo agents --check   # does the block describe the session you are actually in?
+```
+
+**Ask before you assume.** `--ask` prints the list and the question; you put it
+to the developer and wait. `--auto` takes the mode's defaults, which is what
+they already chose when they declared the mode — use it when they say to keep
+the defaults, not instead of asking.
+
+`leo check` fails on a block that describes a session nobody is in. That is
+deliberate and it is the worse of the two failures: a missing block tells you
+nothing, a stale one tells you something false, and you will believe it.
+
+### SESSION.md
+
+Written by leo on the way out of **every** command, including the ones that
+fail, the ones that refuse and the ones that are interrupted. Nothing in it is
+authored and nothing in it should be edited.
+
+Read it first after a disconnect. It is the same answer `leo session --report`
+prints, on disk, put there by the command that failed — whether or not anyone
+was watching when it did.
+
+## 8. Resume — "where were we"
 
 ```sh
 leo session --report   # the whole change on one screen, including Next:

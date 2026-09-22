@@ -5,8 +5,13 @@
 # Installs, and never overwrites without --force:
 #   AGENTS.md          short, loaded every session, read by every agent
 #   CLAUDE.md          one-line bridge to AGENTS.md
+#   CONTEXT.md         what this project is
+#   ARCHITECTURE.md    how the pieces fit
+#   CODE_REVIEW.md     what a finding has to clear — cycle two argues against it
+#   RULES.md           an index of .leo/rules/, with the reason for each
+#   SESSION.md         where this session stands — written by leo, never by you
 #   .leo/workflow.md   the loop the agent follows, read on demand
-#   .leo/tasks/        one file per plan task, written by `leo task`
+#   .leo/plans/        one directory per plan: P1, P2, ... each with its tasks
 #   .leo/tools/        one per capability: how to use it, what it needs
 #   .leo/config        TEST_CMD and friends
 #   .leo/rules/        one file per lesson learned, enforced by `leo check`
@@ -27,7 +32,8 @@ put() { # put <template> <destination>
   fi
 }
 
-mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools .leo/skills .leo/reviews
+mkdir -p .leo/rules .leo/integrations .leo/tasks .leo/tools .leo/skills \
+         .leo/reviews .leo/plans
 
 put AGENTS.md      AGENTS.md
 put CLAUDE.md      CLAUDE.md
@@ -43,7 +49,17 @@ put rule.md        .leo/rules/EXAMPLE.md
 # citing anything. .leo/reviews/ is deliberately NOT gitignored -- the plan and
 # the manifest end up inside the commit message they describe, and a review of
 # a commit that already exists has nowhere to live but the repository.
-put review/STANDARDS.md .leo/review/STANDARDS.md
+put review/STANDARDS.md CODE_REVIEW.md
+# The three that answer the questions AGENTS.md is too short to answer. All
+# three are read on demand, which is what lets them be as long as they are
+# useful -- see .leo/rules/ALWAYS-LOADED.md for what the alternative costs.
+put ARCHITECTURE.md ARCHITECTURE.md
+put RULES.md        RULES.md
+# A placeholder only. The real one is written by the exit hook in core/lib.sh
+# on the way out of this very command, so what lands here is overwritten
+# seconds later with the truth. It exists so that a fresh clone has the file
+# before anybody runs anything, rather than a dangling reference in AGENTS.md.
+put SESSION.md      SESSION.md
 # A README rather than a sample adapter: leo sources every *.sh in that
 # directory, so a template that shipped as one would load itself and show up
 # as a capability nobody asked for.
@@ -107,8 +123,12 @@ fi
 # The plan, the manifest, the session and the recorded-but-unlanded cycles are
 # working state; they end up in commit messages, so they should not also be
 # tracked as files.
+# SESSION.md and .leo/current join them: both say where one working tree is at
+# one moment. .leo/plans/ is deliberately NOT here -- a plan is the reasoning
+# behind a change, it outlives the change, and it belongs to everyone who later
+# has to ask why a line is the way it is.
 for _ignore in ".leo/plan.md" ".leo/manifest.md" ".leo/session" ".leo/tasks/" \
-               ".leo/commits/" ".leo/used"; do
+               ".leo/commits/" ".leo/used" ".leo/current" "SESSION.md"; do
   grep -qxF "$_ignore" .gitignore 2>/dev/null || {
     printf '%s\n' "$_ignore" >> .gitignore
     info "  update  .gitignore ($_ignore)"
@@ -119,5 +139,7 @@ echo >&2
 ok "ready"
 dim "  1. fill in AGENTS.md — delete every placeholder you do not need"
 dim "  2. set TEST_CMD in .leo/config"
-dim "  3. start a change: leo plan \"<name>\""
-dim "  4. make .leo/review/STANDARDS.md yours — it is what cycle two argues against"
+dim "  3. leo agents --ask   — put the tool choice to the developer, then"
+dim "     leo agents --auto  — write their answer into AGENTS.md"
+dim "  4. start a change: leo plan \"<name>\"   (it becomes P1)"
+dim "  5. make CODE_REVIEW.md yours — it is what cycle two argues against"

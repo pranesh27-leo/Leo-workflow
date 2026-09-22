@@ -58,6 +58,12 @@ _tree=$(snapshot_tree)
   printf 'Assisted-by: %s\n' "$(who)"
   printf '\n'
 
+  # Which plan this cycle belongs to. A repository has several, task ids are
+  # unique across all of them, and a record that named a task without naming
+  # its plan would be readable today and ambiguous in a year.
+  _pid=$(plan_id)
+  [ -n "$_pid" ] && printf 'Plan: %s\n' "$_pid"
+
   # The plan's goal, so the record states intent before it states mechanics.
   if [ -f "$PLAN" ]; then
     _goal=$(awk '
@@ -72,6 +78,20 @@ _tree=$(snapshot_tree)
   # answer is only meaningful beside the code it is an answer about.
   _tools=$(used_list | tr '\n' ' ' | sed 's/ *$//')
   [ -n "$_tools" ] && printf 'Tools: %s\n\n' "$_tools"
+
+  # What this change deliberately did not attempt. It belongs in the commit
+  # message for the same reason the manifest does: a reviewer six months out
+  # needs to tell "we decided not to yet" from "nobody thought of it", and the
+  # only moment that difference is cheap to record is now.
+  _later=$(plan_later)
+  if [ -n "$_later" ]; then
+    printf 'Later:\n'
+    for _t in $_later; do
+      printf '  %s %s — %s\n' "$_t" "$(plan_task_name "$_t")" \
+        "$(plan_later_why "$_t")"
+    done
+    printf '\n'
+  fi
 
   if [ -f "$MANIFEST" ]; then
     # The scan writes a "Base:" line whenever it did not diff against HEAD, and

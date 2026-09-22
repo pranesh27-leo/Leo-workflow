@@ -12,9 +12,22 @@
 # Detected by its ruleset being in AGENTS.md, which is the form that works with
 # every agent. The plugin installs cannot be detected portably, so a developer
 # using the plugin should add the ruleset too, or read this as a false negative.
+#
+# leo's own generated block is cut out before the grep, and that is not a
+# nicety. `leo agents --auto` writes a row naming every capability, ponytail
+# included, into exactly the file this function reads. Without the exclusion
+# the tool detected itself the moment leo described it: "installed" for every
+# repository that had run `leo agents`, on a machine where nobody had ever
+# installed anything. It also made the fingerprint unstable -- writing the
+# block changed the answer the block was a fingerprint of -- so `leo agents
+# --check` failed immediately after `--auto` succeeded.
 ponytail_present() {
   [ -f "${ROOT:-.}/AGENTS.md" ] || return 1
-  grep -qi 'ponytail' "$ROOT/AGENTS.md" 2>/dev/null
+  awk '
+    /leo:tools begin/ { skip = 1 }
+    !skip { print }
+    /leo:tools end/   { skip = 0 }' "$ROOT/AGENTS.md" 2>/dev/null \
+    | grep -qi 'ponytail'
 }
 
 ponytail_hint() {
@@ -39,3 +52,9 @@ ponytail_install() {
 # Ambient: this wraps the session rather than being called at a moment, so
 # `_present` is the evidence and the agent is never asked to announce it.
 ponytail_kind() { printf 'ambient'; }
+
+ponytail_oneline() {
+  printf 'Ambient. Nothing to announce, and nothing you can call at a moment.'
+}
+
+ponytail_label() { printf 'Ponytail'; }

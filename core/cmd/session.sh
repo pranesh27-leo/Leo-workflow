@@ -81,6 +81,15 @@ if [ "$_set" -eq 1 ]; then
       [ -n "$_o" ] && printf '%s=%s\n' "$(printf '%s' "$_c" | tr 'a-z' 'A-Z')" "$_o"
     done
   } > "$SESSION"
+
+  # The tools block in AGENTS.md now describes the session that was in effect
+  # a moment ago. Saying so here is the cheapest place to catch it: this is
+  # the only command that can make it stale, and the agent reading AGENTS.md
+  # has no way to know the file moved under it.
+  if [ -f "$ROOT/AGENTS.md" ] && grep -q '<!-- leo:tools begin' "$ROOT/AGENTS.md"; then
+    bash "$LEO_SELF" agents --check >/dev/null 2>&1 \
+      || warn "AGENTS.md now describes the previous session — leo agents --auto"
+  fi
 fi
 
 # --- report ---------------------------------------------------------------
@@ -97,7 +106,9 @@ if [ "$_report" -eq 1 ]; then
 
   _row() { printf '  %-13s %s\n' "$1" "$2" >&2; }
 
-  _n=$(plan_name);   [ -n "$_n" ]  && _row "Change" "$_n"
+  _pi=$(plan_id)
+  _n=$(plan_name)
+  [ -n "$_n" ] && _row "Change" "${_pi:+$_pi — }$_n"
   if [ -n "$MODE" ]; then _row "Mode" "$(session_desc)"
   else                    _row "Mode" "none declared"; fi
 
@@ -112,6 +123,10 @@ if [ "$_report" -eq 1 ]; then
   [ -n "$_miss" ] && _row "Not installed" "$_miss"
 
   _st=$(plan_status); [ -n "$_st" ] && _row "Tasks" "$_st"
+  # Deferred work, named. It is not in the "Tasks" count as anything but a
+  # number, and "3 of 7 done" with no further comment is how a parked task
+  # turns into a forgotten one.
+  _l=$(plan_later);   [ -n "$_l" ]  && _row "Later" "$_l  (leo defer --list)"
   # The to-do inside the task being worked on. The row above is the plan's
   # view -- how many tasks -- and this one is the task file's; neither
   # restates the other.
@@ -152,6 +167,19 @@ if [ "$_report" -eq 1 ]; then
   # same answer computed from disk, so it stays right when the chat is gone.
   _row "Next" "$(next_step)"
 
+  # Whether the instructions the agent is reading describe this session. A
+  # stale tools block is worse than none: it is believed.
+  if [ -f "$ROOT/AGENTS.md" ] && grep -q '<!-- leo:tools begin' "$ROOT/AGENTS.md"; then
+    if bash "$LEO_SELF" agents --check >/dev/null 2>&1; then
+      _row "AGENTS.md" "current"
+    else
+      _row "AGENTS.md" "STALE — leo agents --auto"
+    fi
+  else
+    _row "AGENTS.md" "no tools block — leo agents --ask, then --auto"
+  fi
+  _row "This report" "also written to SESSION.md, on every command"
+
   echo >&2
   dim "  no token figures here on purpose: the tools above measure different"
   dim "  things over overlapping buffers, and summing them would be fiction."
@@ -168,15 +196,12 @@ fi
 # One capability per line: what it is set to, whether that came from the mode
 # or from you, and whether leo can do anything about it yet. A capability leo
 # cannot act on says so rather than looking enabled.
-label() {
-  command -v "${1}_label" >/dev/null 2>&1 && { "${1}_label"; return 0; }
-  case "$1" in
-    serena)   printf 'Serena' ;;      rtk)      printf 'RTK' ;;
-    headroom) printf 'Headroom' ;;    ponytail) printf 'Ponytail' ;;
-    caveman)  printf 'Caveman' ;;
-    *)        printf '%s' "$1" ;;
-  esac
-}
+# One line, because every adapter now supplies its own `<cap>_label`. This
+# used to carry a second copy of those names as a fallback, which is a list
+# that drifts from the adapters the first time one of them is renamed -- and
+# the symptom would be leo calling the same tool two different things in two
+# commands.
+label() { cap_label "$1"; }
 
 # The note says one thing only: leo names this capability but has no adapter
 # for it. Derived from cap_present rather than written down, because the hand-

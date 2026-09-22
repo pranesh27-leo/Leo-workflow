@@ -1,4 +1,4 @@
-# ASSET-SEAM
+# MUST NOT read leo's own install outside the asset seam
 
 MUST: nothing outside the seam in `core/lib.sh` reads leo's own install. No
 file under `core/` may name `$LEO_HOME/templates`, `$LEO_HOME/VERSION` or

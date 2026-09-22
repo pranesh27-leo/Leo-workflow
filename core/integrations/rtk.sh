@@ -36,3 +36,9 @@ rtk_install() {
 # Ambient: this wraps the session rather than being called at a moment, so
 # `_present` is the evidence and the agent is never asked to announce it.
 rtk_kind() { printf 'ambient'; }
+
+rtk_oneline() {
+  printf 'Wraps shell output and filters it structurally. Nothing to announce; it is already in effect.'
+}
+
+rtk_label() { printf 'RTK'; }

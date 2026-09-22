@@ -78,17 +78,40 @@ it landed.
 ## Install
 
 ```sh
+npm install -g leo-workflow
+cd ~/your-repo && leo init
+```
+
+Or from a clone, which is the same tool and the same files — leo is bash, and
+npm is only carrying it:
+
+```sh
 ln -s "$PWD/leo" /usr/local/bin/leo
 cd ~/your-repo && leo init
 ```
+
+Or vendor a single self-contained file into the repository itself, so it
+depends on something it contains rather than on a clone on somebody's laptop:
+
+```sh
+leo build && cp dist/leo ~/your-repo/.leo/bin/leo
+```
+
+Needs bash 3.2 or newer and git. Nothing else: no node at runtime, no network,
+no daemon.
 
 ## Use
 
 ```sh
 leo session --mode coding       # optional: what kind of work this is
 leo install --all               # optional: get what that mode declares
-leo plan "rate limiting"        # after the agent has grilled you
+leo agents --ask                # which tools may the agent use? Ask, then:
+leo agents --auto               # write the answer into AGENTS.md, with the
+                                # MCP names and the one rule for each
+leo plan "rate limiting"        # after the agent has grilled you. Opens P1;
+                                # the next thing you want opens P2.
 leo task T1                     # each task gets a file and a to-do
+leo defer T2 "no sandbox key"   # cannot do it yet? Park it. The loop moves on.
                                 # ...the agent builds it, one task at a time
 leo scan                        # split the diff into hunks
                                 # ...the agent fills in Task / Why / If deleted
@@ -103,7 +126,7 @@ leo commit                      # you run this one. It refuses without a tty,
 leo session --mode review
 leo review                      # briefed from the commit cycle one just wrote
                                 # ...the agent files findings against
-                                #    .leo/review/STANDARDS.md. It cannot edit code.
+                                #    CODE_REVIEW.md. It cannot edit code.
 leo review --close              # yours too. No open blocker, and a real verdict.
 ```
 
@@ -113,15 +136,26 @@ Nothing lives in the chat, so a dropped connection, a closed laptop or a week
 away costs nothing:
 
 ```sh
-leo plan               # the plan, plus "2 of 5 done | in progress: T3"
+cat SESSION.md         # where the session was, written by the command that
+                       # ended it — including the one that failed
+leo plan               # the plan, plus "2 of 5 done, 1 later | next: T3"
+leo plan --list        # every plan in the repository, and which is in flight
+leo defer --list       # what was put off, and why
 git diff HEAD          # the code you already wrote, still sitting there
 cat .leo/manifest.md   # the review table, as far as it got
 ```
 
-The Status column in the plan is the whole memory of a long change. `.leo/` is
-gitignored by default, which keeps it local and disposable — if you need a
-change to survive across machines or be visible to teammates, drop
-`.leo/plan.md` from `.gitignore` and commit it.
+`SESSION.md` is rewritten on the way out of **every** leo command — success,
+failure, refusal or interrupt. It is the one file that is still true after a
+session drops, because the command that dropped it wrote the file on its way
+down.
+
+The Status column in the plan is the whole memory of a long change, and
+`later` is a status: a task you cannot do yet is neither done nor deleted.
+
+`.leo/plans/` is **tracked** — a plan is the reasoning behind a change and
+outlives it. The rest of `.leo/` is gitignored, because every one of those
+files ends up inside the commit message it describes.
 
 ## Layout
 
@@ -160,6 +194,7 @@ Two cycles, and the command for each stage:
 
 ```
 CYCLE ONE  grill -> plan -> task -> subtask -> build -> manifest -> record
+           (any task or subtask can go to `later` instead, with a reason)
            ...once per part of the change. Then, once: commit
 CYCLE TWO  brief -> read -> findings -> close        (a new session, after the commit)
 ```
@@ -202,7 +237,7 @@ Then cycle two, which `leo commit` asks for:
 leo session --mode review
 leo review                         # or: leo review <sha>, leo review main..HEAD
 
-# 10. read — the diff against .leo/review/STANDARDS.md, briefed with what
+# 10. read — the diff against CODE_REVIEW.md, briefed with what
 #    cycle one recorded: goal, manifest, non-goals, and what the grill settled
 
 # 11. findings — one row each: severity, where, what breaks, status

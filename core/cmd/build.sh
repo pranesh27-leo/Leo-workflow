@@ -74,7 +74,8 @@ done
 
 mkdir -p "$(dirname "$_out")"
 _tmp=$(mktemp "${TMPDIR:-/tmp}/leo-build.XXXXXX")
-trap 'rm -f "$_tmp"' EXIT
+# See check.sh: one EXIT trap for the whole tool, in core/lib.sh.
+leo_atexit_add 'rm -f "$_tmp"'
 
 {
   # ---------------------------------------------------------- preamble ----
@@ -200,7 +201,10 @@ bash -n "$_tmp" || die "the generated bundle does not parse — this is a bug in
 
 chmod +x "$_tmp"
 mv "$_tmp" "$_out"
-trap - EXIT
+# The temp file is gone; the hook that would delete it has nothing to do and
+# `rm -f` on a missing path is silent. Clearing the whole list here would take
+# the session-document write with it.
+LEO_ATEXIT=""
 
 ok "built: ${_out#"$PWD"/}"
 dim "  leo $_ver from $_sha$_dirty, $(wc -l < "$_out" | tr -d ' ') lines"

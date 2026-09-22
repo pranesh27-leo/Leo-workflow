@@ -1,0 +1,25 @@
+{
+  "name": "leo-workflow",
+  "version": "0.6.0",
+  "description": "Keep AI-written code reviewable: a plan, a manifest of every hunk, and both inside the commit message.",
+  "keywords": ["ai", "code-review", "git", "workflow", "agents", "claude", "cursor", "codex"],
+  "license": "MIT",
+  "homepage": "https://github.com/leo-workflow/leo#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/leo-workflow/leo.git" },
+  "bugs": { "url": "https://github.com/leo-workflow/leo/issues" },
+  "bin": { "leo": "leo" },
+  "files": [
+    "leo",
+    "core/",
+    "templates/",
+    "VERSION",
+    "LICENSE",
+    "README.md",
+    "GUIDE.md"
+  ],
+  "engines": { "node": ">=14" },
+  "os": ["darwin", "linux", "freebsd", "openbsd"],
+  "scripts": {
+    "test": "bash t/smoke.sh && bash t/negative.sh"
+  }
+}

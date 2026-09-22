@@ -10,3 +10,5 @@ t/fixtures/*/
 !t/fixtures/tasks/
 .leo/commits/
 .leo/used
+.leo/current
+SESSION.md

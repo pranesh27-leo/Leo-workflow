@@ -1,6 +1,6 @@
 # Review: <REV> — <SUBJECT>
 
-Standards: `.leo/review/STANDARDS.md`
+Standards: `CODE_REVIEW.md`
 
 This is cycle two. The change is already committed; nothing here can be fixed
 by editing it. A finding becomes either a new dev cycle or a waiver, and both

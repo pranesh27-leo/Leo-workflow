@@ -881,7 +881,7 @@ ok   opened .leo/reviews/0a79621.md — 0a79621, 1 file(s)
 
 Read, in this order:
   1. the "What was asked for" section — what the dev cycle recorded
-  2. .leo/review/STANDARDS.md — what a finding here has to clear
+  2. CODE_REVIEW.md — what a finding here has to clear
   3. git show 0a79621 — the code, against both
 
 Then fill the findings table, write the verdict, and: leo review --close
@@ -983,7 +983,7 @@ Severity is `blocker`, `improvement` or `nit`. Status is `open`, `fixed` or
 `waived`. The vocabulary is closed because `leo review --close` reads those two
 columns and nothing else.
 
-What a finding has to clear is `.leo/review/STANDARDS.md` — installed into your
+What a finding has to clear is `CODE_REVIEW.md` — installed into your
 repository by `leo init`, and yours to amend. It is a rubric, not a checklist:
 design, correctness, security, tests, maintainability, performance,
 dependencies, in that order, with the rule that every finding names the failure
@@ -1290,10 +1290,22 @@ in the commit message anyway, and tracking it records the same intent twice.
 | `leo install <name>` | **you only** | installs one. Shows the command, asks first. |
 | `leo install --all` | **you only** | installs everything this session declares |
 | `leo session --clear` | you | ends it |
-| `leo plan "<name>"` | you, per change | writes the plan skeleton |
-| `leo plan` | either | shows the plan and where it stands |
+| `leo plan "<name>"` | you, per change | opens the NEXT plan — P1, P2, … — and switches to it |
+| `leo plan` | either | shows the plan in flight and where it stands |
+| `leo plan --list` | either | every plan in the repository, and which one is in flight |
+| `leo plan --switch P1` | you | go back to an earlier plan |
 | `leo task T1` | agent | gives one plan task its own file and to-do, or shows it |
 | `leo task` | either | every task, its to-do progress and its plan status |
+| `leo defer T3 "<why>"` | either | moves a task or subtask to later work. The loop steps over it. |
+| `leo defer --list` | either | everything deferred in the plan in flight, with reasons |
+| `leo resume T3` | either | takes it back out of later work |
+| `leo agents --ask` | agent | prints the tool question to put to the developer |
+| `leo agents --auto` | either | writes this session's tool and MCP instructions into AGENTS.md |
+| `leo agents --check` | agent | fails if that block describes a session you are no longer in |
+| `leo agents --list` | either | every tool leo knows: state, installed, kind, MCP names |
+| `leo docs` | either | the companion documents: what exists, what is missing, what is stale |
+| `leo docs --write` | either | creates what is missing, refreshes what is generated |
+| `leo docs --check` | agent | fails on a missing or stale companion document |
 | `leo use <name>` | agent | announces the tool it is about to use and logs it to `.leo/used` |
 | `leo use --list` | either | the tools used this cycle |
 | `leo scan [base]` | agent | diff → `.leo/manifest.md`, one row per hunk |
@@ -1318,7 +1330,10 @@ hunk the earlier cycles already accounted for.
 
 | Path | Committed? | What it is |
 |---|---|---|
-| `AGENTS.md` | yes | standing instructions, every session, keep under 50 lines |
+| `AGENTS.md` | yes | standing instructions, every session, keep it short |
+| `ARCHITECTURE.md` | yes | how the pieces fit — read on demand |
+| `RULES.md` | yes | an index of `.leo/rules/`, generated, with the reason for each |
+| `SESSION.md` | no | where this session stands. Written by leo on the way out of every command, including the ones that fail. |
 | `CLAUDE.md` | yes | one-line bridge so Claude Code reads AGENTS.md |
 | `.leo/workflow.md` | yes | **the agent's instructions — the authority** |
 | `.leo/rules/*.md` | yes | one lesson per file, each with a shell check |
@@ -1326,13 +1341,15 @@ hunk the earlier cycles already accounted for.
 | `.leo/tools/*.md` | yes | one per capability: how to use it, what it needs |
 | `.leo/config` | yes | `TEST_CMD` |
 | `.leo/session` | no | current mode, if you set one |
-| `.leo/plan.md` | no | current change |
-| `.leo/tasks/*.md` | no | one per task: "Done when", a to-do, notes |
+| `.leo/plans/P1/plan.md` | **yes** | one change: goal, non-goals, tasks, budget. Tracked, because a plan is the reasoning behind a change and outlives it. |
+| `.leo/plans/P1/tasks/*.md` | **yes** | one per task: "Done when", a to-do, the grill, notes |
+| `.leo/current` | no | which plan is in flight |
+| `.leo/plan.md` | no | the single-plan layout every leo before 0.6 wrote. Still read; never migrated behind your back. |
 | `.leo/manifest.md` | no | current scope table |
 | `.leo/commits/*.md` | no | one per cycle recorded but not yet landed |
 | `.leo/used` | no | which declared tools built this cycle's hunks |
 | `.claude/skills/*/SKILL.md` | **yes** | the vendored skills, where Claude Code reads them |
-| `.leo/review/STANDARDS.md` | yes | the rubric cycle two argues against — yours to amend |
+| `CODE_REVIEW.md` | yes | the rubric cycle two argues against — yours to amend |
 | `.leo/reviews/*.md` | **yes** | one review per commit. The only copy there is. |
 
 ### Config

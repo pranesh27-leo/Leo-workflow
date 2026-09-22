@@ -268,7 +268,11 @@ $_body
 # wrong in a way that matters; a signal leo does not raise is the failure mode,
 # not a signal it raises for a line that turns out to be fine.
 _added=$(mktemp "${TMPDIR:-/tmp}/leo-review.XXXXXX")
-trap 'rm -f "$_added"' EXIT
+# Registered, not trapped: there is one EXIT trap in leo and it lives in
+# core/lib.sh. Installing a second here would silently replace it, and the
+# session document would stop being written by this command -- see the
+# exit-hooks section there, and .leo/rules/ONE-EXIT-TRAP.md.
+leo_atexit_add 'rm -f "$_added"'
 
 # Every added line as file<TAB>line<TAB>text. The line numbers are the ones in
 # the new file, tracked off the hunk headers, so a signal points at something
@@ -396,7 +400,7 @@ ok "opened ${_f#"$ROOT"/} — $_sha, ${_nfiles:-0} file(s)"
 info ""
 info "Read, in this order:"
 dim  "  1. the \"What was asked for\" section — what the dev cycle recorded"
-dim  "  2. .leo/review/STANDARDS.md — what a finding here has to clear"
+dim  "  2. CODE_REVIEW.md — what a finding here has to clear"
 dim  "  3. $([ "$_range" -eq 1 ] && printf 'git diff %s' "$_rev" || printf 'git show %s' "$_sha") — the code, against both"
 info ""
 dim  "Then fill the findings table, write the verdict, and: leo review --close"

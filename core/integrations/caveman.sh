@@ -45,3 +45,9 @@ caveman_install() {
 # Ambient: this wraps the session rather than being called at a moment, so
 # `_present` is the evidence and the agent is never asked to announce it.
 caveman_kind() { printf 'ambient'; }
+
+caveman_oneline() {
+  printf 'Compresses prose. Never compress code, output, or anything the developer asked to read line by line.'
+}
+
+caveman_label() { printf 'Caveman'; }

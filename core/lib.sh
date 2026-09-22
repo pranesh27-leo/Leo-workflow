@@ -50,6 +50,23 @@ base_index() {
   printf '%s' "$_i"
 }
 
+# not_bookkeeping — drop leo's own plan files from a stream of paths.
+#
+# `.leo/plans/` is tracked, unlike everything else leo writes, because a plan
+# is the reasoning behind a change and outlives it. That makes the plan and
+# its task files show up in `git diff` like any other tracked file -- so the
+# manifest demanded a row for the plan that the manifest is scoped by, with a
+# "Why" and an "If deleted" for a document whose answer to both is "it is the
+# question you are asking", and the budget measured the change against an
+# estimate the change's own prose was inflating.
+#
+# The rule, stated once: **the plan describing a change is not part of the
+# change it describes.** Nothing else under `.leo/` is excluded. `.leo/rules/`
+# and `.leo/integrations/` are repository code somebody wrote on purpose, they
+# are reviewed like any other file, and a blanket `.leo/` filter here would
+# quietly stop reviewing them.
+not_bookkeeping() { grep -v '^\.leo/plans/' || true; }
+
 # changed <base> — every file that differs from <base>, plus files that did not
 # exist in it at all.
 changed() {
@@ -57,7 +74,7 @@ changed() {
   _idx=$(base_index "$_b")
   { GIT_INDEX_FILE="$_idx" git diff --name-only "$_b" 2>/dev/null
     GIT_INDEX_FILE="$_idx" untracked
-  } | sed '/^$/d' | sort -u
+  } | sed '/^$/d' | not_bookkeeping | sort -u
   rm -f "$_idx"
 }
 
@@ -80,8 +97,11 @@ is_text() { [ ! -s "$1" ] || grep -Iq '' "$1" 2>/dev/null; }
 lines_changed() {
   _b="${1:-HEAD}"
   _idx=$(base_index "$_b")
-  { GIT_INDEX_FILE="$_idx" git diff --numstat "$_b" 2>/dev/null
-    GIT_INDEX_FILE="$_idx" untracked | while IFS= read -r f; do
+  # The numstat is filtered on its third field and the untracked list on its
+  # only one, so the same exclusion applies to both halves. See changed().
+  { GIT_INDEX_FILE="$_idx" git diff --numstat "$_b" 2>/dev/null \
+      | awk -F'\t' '$3 !~ /^\.leo\/plans\//'
+    GIT_INDEX_FILE="$_idx" untracked | not_bookkeeping | while IFS= read -r f; do
         # `is_text && printf` would be wrong here. A binary or empty file makes
         # is_text the last command in the loop body, the loop returns 1, and
         # under `pipefail` the whole substitution fails -- so `set -e` kills the
@@ -119,7 +139,6 @@ fi
 # ------------------------------------------------------------- layout ----
 # Everything leo owns lives under .leo/. One directory, no surprises.
 LEO_DIR="${ROOT:-.}/.leo"
-PLAN="$LEO_DIR/plan.md"
 MANIFEST="$LEO_DIR/manifest.md"
 RULES="$LEO_DIR/rules"
 # One file per recorded-but-unlanded cycle. `leo record` writes them, `leo
@@ -129,6 +148,125 @@ RECORDS="$LEO_DIR/commits"
 # reads, `leo record` folds it into the record and clears it. See the tools
 # section below.
 USED="$LEO_DIR/used"
+
+# ------------------------------------------------------- plan registry ----
+# A change is one plan. A repository has many of them, because the developer
+# comes back a week later wanting something else and the old plan is not
+# wrong, it is finished -- or deferred, which is the same shape.
+#
+#   .leo/plans/P1/plan.md        the change: goal, non-goals, tasks, budget
+#   .leo/plans/P1/tasks/T1.md    one file per task -- its grill, its to-do
+#   .leo/current                 which plan the work is in, one line
+#
+# Task ids do not restart. P1 owns T1..T3, P2 starts at T4, and no id is ever
+# reused. A manifest row says `T4` and means exactly one task in exactly one
+# plan, forever -- which is the property the whole manifest rests on, and the
+# one a per-plan counter would quietly destroy the day two plans both had a T1
+# and `git log` could no longer tell them apart.
+PLANS="$LEO_DIR/plans"
+CURRENT="$LEO_DIR/current"
+
+# plan_id — the plan in flight, or empty. One line, no parsing.
+plan_id() {
+  [ -f "$CURRENT" ] || return 0
+  head -1 "$CURRENT" 2>/dev/null | tr -d ' \t\n'
+}
+
+plan_path() { printf '%s/%s/plan.md' "$PLANS" "$1"; }
+
+# The active plan, and where its task files live. Resolved once, here, so no
+# command has to know the registry exists.
+#
+# The fallback is not legacy debt, it is the single-plan repository: a .leo/
+# with a plan.md and no plans/ is what every leo before this wrote, and what
+# `printf ... > .leo/plan.md` still writes in a test. It keeps working, it is
+# never migrated behind anyone's back, and `leo plan --list` names it `legacy`
+# so it can be switched back to.
+_pid=$(plan_id)
+if [ -n "$_pid" ] && [ "$_pid" != "legacy" ] && [ -f "$(plan_path "$_pid")" ]; then
+  PLAN="$(plan_path "$_pid")"
+  TASKS="$PLANS/$_pid/tasks"
+else
+  PLAN="$LEO_DIR/plan.md"
+  TASKS="$LEO_DIR/tasks"
+fi
+unset _pid
+
+# plan_use <id> — re-point PLAN and TASKS at another plan, in this process.
+#
+# `leo plan --switch` writes .leo/current and then wants to print the new
+# plan's status, and the exit hook wants to write SESSION.md about it. Both
+# read $PLAN, which was resolved when lib.sh loaded -- from the old plan. The
+# file on disk is right and everything printed afterwards is about the plan
+# you just left.
+plan_use() {
+  if [ "$1" = "legacy" ]; then
+    PLAN="$LEO_DIR/plan.md"; TASKS="$LEO_DIR/tasks"
+  else
+    PLAN="$(plan_path "$1")"; TASKS="$PLANS/$1/tasks"
+  fi
+}
+
+# plans_list — every numbered plan, lowest first. `sort -t P -k2 -n` rather
+# than a plain sort: P10 sorts before P2 as a string, and the order these are
+# printed in is the order the work happened in.
+plans_list() {
+  [ -d "$PLANS" ] || return 0
+  for _p in "$PLANS"/P*/plan.md; do
+    [ -f "$_p" ] || continue
+    _d=$(dirname "$_p"); basename "$_d"
+  done | sort -t P -k2 -n
+}
+
+# plan_next_id — the id a new plan gets. Highest existing plus one, never a
+# count: deleting P2 must not make the next plan P2 again and inherit its
+# history in anyone's memory.
+plan_next_id() {
+  _max=0
+  for _p in $(plans_list); do
+    _n=${_p#P}
+    case "$_n" in ''|*[!0-9]*) continue ;; esac
+    [ "$_n" -gt "$_max" ] && _max="$_n"
+  done
+  printf 'P%d' $(( _max + 1 ))
+}
+
+# plan_file_tasks <plan.md> — the task ids one plan file declares.
+plan_file_tasks() {
+  [ -f "$1" ] || return 0
+  awk -F'|' '/^\| *T[0-9]/ { id = $2; gsub(/[ \t]/, "", id); print id }' "$1"
+}
+
+# task_next_n — the number the next task gets, across every plan and the
+# legacy one. This is what makes P2 start at T4 instead of at T1.
+task_next_n() {
+  _max=0
+  for _p in $(plans_list); do
+    _f=$(plan_path "$_p")
+    for _t in $(plan_file_tasks "$_f"); do
+      _n=${_t#T}; _n=${_n%%.*}
+      case "$_n" in ''|*[!0-9]*) continue ;; esac
+      [ "$_n" -gt "$_max" ] && _max="$_n"
+    done
+  done
+  for _t in $(plan_file_tasks "$LEO_DIR/plan.md"); do
+    _n=${_t#T}; _n=${_n%%.*}
+    case "$_n" in ''|*[!0-9]*) continue ;; esac
+    [ "$_n" -gt "$_max" ] && _max="$_n"
+  done
+  printf '%d' $(( _max + 1 ))
+}
+
+# task_owner <id> — which plan declares this task, or empty. The point is the
+# error message: "T2 is not in the plan" is true and useless when T2 is in P1
+# and you are standing in P2.
+task_owner() {
+  for _p in $(plans_list); do
+    plan_file_tasks "$(plan_path "$_p")" | grep -qx "$1" && { printf '%s' "$_p"; return 0; }
+  done
+  plan_file_tasks "$LEO_DIR/plan.md" | grep -qx "$1" && printf 'legacy'
+  return 0
+}
 
 # .leo/config is plain `KEY=value` shell so it needs no parser.
 TEST_CMD=""
@@ -155,14 +293,17 @@ plan_status() {
       st = $6; gsub(/[ \t]/, "", st)
       total++
       if (st == "done") { done++ }
+      else if (st == "later") { later++ }
       else if (st == "in-progress") { doing = doing (doing ? "," : "") id }
       else if (next_ == "") { next_ = id }
     }
     END {
       if (!total) exit
       printf "%d of %d done", done + 0, total
+      if (later + 0)  printf ", %d later", later
       if (doing != "") printf "  |  in progress: %s", doing
       else if (next_ != "") printf "  |  next: %s", next_
+      else if (later + 0) printf "  |  nothing left but later work"
     }' "$PLAN"
 }
 
@@ -175,7 +316,8 @@ plan_status() {
 # Every one of them guards its read. A substitution over a missing file under
 # `set -e` with `pipefail` takes the caller down after the value was already
 # computed, which is the failure lines_changed above documents at length.
-TASKS="$LEO_DIR/tasks"
+# TASKS is set in the plan registry above: it is the active plan's directory,
+# not a fixed path, and setting it twice is how the second one goes stale.
 
 task_file() { printf '%s/%s.md' "$TASKS" "$1"; }
 
@@ -234,10 +376,99 @@ task_current() {
     /^\| *T[0-9]/ {
       id = $2; gsub(/[ \t]/, "", id)
       st = $6; gsub(/[ \t]/, "", st)
+      # "later" is skipped exactly as "done" is. That is the whole feature:
+      # the work is not finished and is not in the way, so the loop steps over
+      # it and the next task becomes the task in flight. A deferred task that
+      # still answered task_current would keep `leo check` demanding a grill
+      # for work nobody intends to do this week.
       if (st == "in-progress" && doing == "") doing = id
-      if (st != "done" && first == "") first = id
+      if (st != "done" && st != "later" && first == "") first = id
     }
     END { if (doing != "") print doing; else if (first != "") print first }' "$PLAN"
+}
+
+# plan_later — every task the plan has deferred, space separated. Read by the
+# report, the record and the check, so "what did we put off" has one answer.
+plan_later() {
+  [ -f "$PLAN" ] || return 0
+  awk -F'|' '
+    /^\| *T[0-9]/ {
+      id = $2; gsub(/[ \t]/, "", id)
+      st = $6; gsub(/[ \t]/, "", st)
+      if (st == "later") out = out (out ? " " : "") id
+    }
+    END { if (out != "") print out }' "$PLAN"
+}
+
+# plan_later_why <id> — the reason `leo defer` wrote under "## Later", or
+# empty. The status cell says a task is deferred; only this says why, and a
+# deferral with no why is indistinguishable from one that was forgotten.
+plan_later_why() {
+  [ -f "$PLAN" ] || return 0
+  awk -v want="$1" '
+    /^## Later/ { inx = 1; next }
+    inx && /^## / { exit }
+    inx && /^- / {
+      line = $0
+      sub(/^- /, "", line)
+      id = line; sub(/ .*$/, "", id)
+      if (id == want) {
+        # Strip the id, then everything up to the first word. The separator is
+        # an em dash and byte-wise character classes do not reliably match one
+        # -- the same reason review_subject does it this way.
+        sub(/^[^ ]*/, "", line)
+        sub(/^[^A-Za-z0-9]*/, "", line)
+        print line; exit
+      }
+    }' "$PLAN"
+}
+
+# ------------------------------------------------------------- subtasks ----
+# A subtask is a `## T1.2 <name>` heading inside its parent's file. It can be
+# deferred too, and the mark is a `Status: later` line directly under the
+# heading -- the same shape as the plan's status cell, one level down.
+
+# subtask_ids <task-id> — every subtask heading in a task file, in order.
+subtask_ids() {
+  _tf=$(task_file "$1")
+  [ -f "$_tf" ] || return 0
+  awk -v p="$1" '$1 == "##" && index($2, p ".") == 1 { print $2 }' "$_tf"
+}
+
+# subtask_state <task-id> <subtask-id> — "later" or empty.
+subtask_state() {
+  _tf=$(task_file "$1")
+  [ -f "$_tf" ] || return 0
+  awk -v want="$2" '
+    $1 == "##" { here = ($2 == want) }
+    here && /^Status: *later/ { print "later"; exit }' "$_tf"
+}
+
+# task_later_subs <task-id> — the deferred subtasks of one task.
+task_later_subs() {
+  for _s in $(subtask_ids "$1"); do
+    [ "$(subtask_state "$1" "$_s")" = "later" ] && printf '%s ' "$_s"
+  done
+  return 0
+}
+
+# task_ungrilled <task-id> — how many sections of this task still carry the
+# ungrilled marker, NOT counting deferred ones.
+#
+# The exclusion is the point. A subtask that has been put off has not been
+# grilled and must not be: grilling it would mean answering questions about
+# work that is not happening, and the answers would be guesses. Counting it
+# would make `leo check` unpassable until somebody either did the work or
+# deleted the subtask, which is exactly the pressure that gets deferrals
+# deleted instead of recorded.
+task_ungrilled() {
+  _tf=$(task_file "$1")
+  [ -f "$_tf" ] || { printf 0; return 0; }
+  awk '
+    /^## /            { later = 0 }
+    /^Status: *later/ { later = 1 }
+    /leo:ungrilled/   { if (!later) n++ }
+    END { print n + 0 }' "$_tf"
 }
 
 # plan_name — the change this plan is for, from its title line.
@@ -282,6 +513,17 @@ next_step() {
             return 0
           fi ;;
     esac
+  fi
+
+  # Every task either done or deferred, and nothing scanned. The change is
+  # not finished, it is parked -- and saying "leo scan" here would send the
+  # agent to build a manifest for work that was explicitly put off.
+  if [ -z "$_t" ] && [ ! -f "$MANIFEST" ]; then
+    _l=$(plan_later)
+    if [ -n "$_l" ]; then
+      printf 'every task left is later work (%s) — leo resume <id>, or leo plan "<next change>"' "$_l"
+      return 0
+    fi
   fi
 
   [ -f "$MANIFEST" ] || { printf 'leo scan'; return 0; }
@@ -750,4 +992,206 @@ cap_present() {
 cap_call() {
   command -v "${1}_$2" >/dev/null 2>&1 || return 0
   "${1}_$2"
+}
+
+# cap_label <cap> — the display name, from the adapter or from the name.
+cap_label() {
+  _l=$(cap_call "$1" label)
+  printf '%s' "${_l:-$1}"
+}
+
+# cap_oneline <cap> — one line an agent can act on without opening anything.
+# The adapter's own `<cap>_oneline` if it has one, otherwise the first line of
+# its advice, otherwise nothing.
+#
+# One line, deliberately. This is what `leo agents` writes into AGENTS.md, and
+# AGENTS.md is re-read on every request of every session forever -- see
+# .leo/rules/ALWAYS-LOADED.md for what a paragraph here costs.
+cap_oneline() {
+  if command -v "${1}_oneline" >/dev/null 2>&1; then
+    "${1}_oneline"
+    return 0
+  fi
+  cap_call "$1" advice | head -1
+}
+
+# cap_mcp <cap> — the MCP tool names this capability exposes, or empty.
+# Empty is a real answer and the common one: most of these are not MCP servers
+# at all, and inventing names for them is how an agent ends up calling a tool
+# that does not exist and concluding leo is broken.
+cap_mcp() {
+  command -v "${1}_mcp" >/dev/null 2>&1 || return 0
+  "${1}_mcp"
+}
+
+# cap_signature — every fact about this session that an agent's instructions
+# depend on, as one line. `leo agents` stamps a checksum of this into
+# AGENTS.md; `leo agents --check` recomputes it.
+#
+# Installed state is in it on purpose. A tool that is ON and was installed
+# since the block was written has different instructions -- the agent should
+# be told to use it rather than told it is missing -- and a fingerprint over
+# the switches alone would call that block current.
+cap_signature() {
+  printf 'mode=%s' "${MODE:-none}"
+  for _c in $CAPS; do
+    _rc=0; cap_present "$_c" >/dev/null 2>&1 || _rc=$?
+    printf ' %s=%s/%s' "$_c" "$(cap_state "$_c")" "$_rc"
+  done
+  printf '\n'
+}
+
+# cap_fingerprint — cap_signature, short enough to sit in a comment. cksum is
+# POSIX and everywhere; sha1sum is neither on macOS nor named the same thing
+# when it is there.
+cap_fingerprint() {
+  cap_signature | cksum | tr -d ' ' | cut -c1-12
+}
+
+# ---------------------------------------------------------- exit hooks ----
+# One EXIT trap for the whole tool, and a list of things to run in it.
+#
+# There used to be three traps -- lib.sh had none, `leo check` had one for its
+# buffer, `leo build` had one for its temp file -- and `trap ... EXIT` does not
+# stack: the last one installed silently replaces every earlier one. That is
+# fine while the trap only deletes a temp file. It stops being fine the moment
+# the trap has to write the session document, because the one command whose
+# session document matters most (`leo check`, the one that fails) is precisely
+# the command that was overwriting the trap.
+#
+# So: register, never trap. `.leo/rules/SESSION-ALWAYS.md` fails the build if
+# any file outside this one installs an EXIT trap of its own.
+LEO_ATEXIT=""
+leo_atexit_add() { LEO_ATEXIT="${LEO_ATEXIT}${LEO_ATEXIT:+; }$1"; }
+
+# The handler runs on every exit path there is: success, `die`, `set -e`, and
+# an interrupt. It must not change the status it was called with and must not
+# print, or a failing command starts reporting a different error than the one
+# it had.
+_leo_atexit() {
+  _rc=$?
+  set +e
+  [ -n "$LEO_ATEXIT" ] && eval "$LEO_ATEXIT" >/dev/null 2>&1
+  session_doc_write >/dev/null 2>&1
+  return "$_rc"
+}
+trap '_leo_atexit' EXIT
+# INT and TERM do not run an EXIT trap on their own in every bash, and a
+# session that was killed mid-command is exactly the one somebody comes back
+# to wondering what state it was in.
+trap '_leo_atexit; exit 130' INT
+trap '_leo_atexit; exit 143' TERM
+
+# -------------------------------------------------------- session doc ----
+# SESSION.md: where this session stands, on disk, in markdown, refreshed on
+# the way out of every single leo command whether it succeeded or not.
+#
+# Why a file and not just `leo session --report`: the report is stdout, and
+# stdout dies with the terminal. The one moment this is worth anything is the
+# moment after something went wrong -- the session dropped, the check failed,
+# the agent stopped mid-task -- and in that moment nobody has the scrollback.
+#
+# Gitignored, like the plan and the manifest: it is the state of one working
+# tree at one moment, and the durable record is the commit message.
+SESSION_DOC="${ROOT:-.}/SESSION.md"
+
+# session_doc — the document, on stdout. Every number in it is derived from
+# disk at the moment it is called; nothing is stored to make it printable.
+session_doc() {
+  printf '# Session\n\n'
+  printf '_Written by leo on every command, including the ones that fail._\n'
+  printf '_Generated — do not edit. `%s`_\n\n' "$(now)"
+
+  printf '| | |\n|---|---|\n'
+  _pi=$(plan_id)
+  _pn=$(plan_name)
+  printf '| Plan | %s |\n' "${_pi:+$_pi — }${_pn:-none yet}"
+  printf '| Mode | %s |\n' "$(session_desc 2>/dev/null || true)"
+  _st=$(plan_status); printf '| Tasks | %s |\n' "${_st:-none declared}"
+  _ct=$(task_current)
+  if [ -n "$_ct" ]; then
+    _td=$(task_todo "$_ct")
+    printf '| In flight | %s%s |\n' "$_ct" "${_td:+  ($_td done)}"
+  fi
+  _l=$(plan_later); [ -n "$_l" ] && printf '| Later | %s |\n' "$_l"
+  printf '| Change size | %s file(s), %s line(s) |\n' \
+    "$(changed HEAD | wc -l | tr -d ' ')" "$(lines_changed HEAD)"
+  if [ -f "$MANIFEST" ]; then
+    printf '| Manifest | %s |\n' "$(awk -F'|' '
+      /^\| *[0-9NEW]/ { n++; t = $5; gsub(/[ \t]/, "", t); if (t == "") b++ }
+      END { printf "%d hunk(s), %d still unreviewed", n + 0, b + 0 }' "$MANIFEST")"
+  else
+    printf '| Manifest | none |\n'
+  fi
+  printf '| Recorded, unlanded | %s cycle(s) |\n' "$(record_count)"
+  printf '| Next | %s |\n' "$(next_step)"
+
+  # The tools, because "which tools is this agent allowed to use" is the
+  # question that is most expensive to get wrong and least visible after the
+  # fact.
+  if [ -n "${MODE:-}" ]; then
+    printf '\n## Tools\n\n| Tool | State | Installed | Used this cycle |\n'
+    printf '|---|---|---|---|\n'
+    for _c in $CAPS; do
+      _rc=0; cap_present "$_c" >/dev/null 2>&1 || _rc=$?
+      case "$_rc" in 0) _in=yes ;; 1) _in=NO ;; *) _in='no adapter' ;; esac
+      used_has "$_c" && _u=yes || _u=no
+      printf '| %s | %s | %s | %s |\n' \
+        "$(cap_label "$_c")" "$(cap_state "$_c")" "$_in" "$_u"
+    done
+  fi
+
+  # Deferred work, spelled out with its reason. A one-word "later" in a table
+  # cell is a decision; the reason is the only thing that makes it reviewable.
+  if [ -n "$(plan_later)" ]; then
+    printf '\n## Later work\n\n'
+    # _sd_id, not _t. This loop runs in the calling shell, and the caller is
+    # session_doc_write, which is holding the path of the temp file it is
+    # about to move into place. A loop variable named _t overwrote it with a
+    # task id, `mv` then tried to move the document to a file called "T2", and
+    # SESSION.md silently stopped being updated from the moment anything was
+    # deferred -- which is precisely the state it exists to report.
+    for _sd_id in $(plan_later); do
+      _sd_why=$(plan_later_why "$_sd_id")
+      printf -- '- **%s** %s — %s\n' \
+        "$_sd_id" "$(plan_task_name "$_sd_id")" "${_sd_why:-no reason recorded}"
+    done
+  fi
+
+  printf '\n## Where the rest of it is\n\n'
+  printf -- '- `AGENTS.md` — how to work here, and the tools this session enabled\n'
+  printf -- '- `ARCHITECTURE.md` — what the system is\n'
+  printf -- '- `CODE_REVIEW.md` — what cycle two argues against\n'
+  printf -- '- `RULES.md` — the rules `leo check` enforces\n'
+  printf -- '- `.leo/workflow.md` — the loop, in full\n'
+}
+
+# session_doc_write — write it, atomically, and never fail.
+#
+# Called from the exit trap, so every possible failure here is a failure to
+# report a failure. It writes to a temp file and moves it into place: a leo
+# that is killed halfway through this must leave the previous document intact
+# rather than a truncated one, because a truncated status file is worse than a
+# stale one -- it looks current.
+# _leo_sess_tmp, and not a short name. This function holds a path across a
+# call to session_doc, and session_doc calls a dozen helpers that each set
+# their own working variables in this same flat namespace. A one- or
+# two-letter name here is not a style question: it is a collision waiting for
+# whichever helper grows a loop next, and the symptom is a status file that
+# stops updating without anything failing.
+session_doc_write() {
+  [ -n "$ROOT" ] || return 0
+  [ -d "$LEO_DIR" ] || return 0
+  _leo_sess_tmp=$(mktemp "${TMPDIR:-/tmp}/leo-sess.XXXXXX" 2>/dev/null) || return 0
+  if session_doc > "$_leo_sess_tmp" 2>/dev/null && [ -s "$_leo_sess_tmp" ]; then
+    # 0644, because mktemp makes it 0600 and mv carries that across. A status
+    # file nobody else on the machine can read is a surprise in a shared
+    # checkout, and there is nothing private in it that is not already in the
+    # repository.
+    chmod 644 "$_leo_sess_tmp" 2>/dev/null || true
+    mv "$_leo_sess_tmp" "$SESSION_DOC" 2>/dev/null || rm -f "$_leo_sess_tmp"
+  else
+    rm -f "$_leo_sess_tmp"
+  fi
+  return 0
 }

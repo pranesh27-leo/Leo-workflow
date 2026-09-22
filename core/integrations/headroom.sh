@@ -30,3 +30,9 @@ headroom_install() {
 # Ambient: this wraps the session rather than being called at a moment, so
 # `_present` is the evidence and the agent is never asked to announce it.
 headroom_kind() { printf 'ambient'; }
+
+headroom_oneline() {
+  printf 'Compresses the context semantically. Ambient — and it fights RTK: see leo session for why.'
+}
+
+headroom_label() { printf 'Headroom'; }

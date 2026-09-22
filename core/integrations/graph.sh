@@ -49,3 +49,12 @@ graph_advice() {
 # Invoked: the agent calls this at a moment, so the mark it leaves is the agent
 # saying so -- `leo use graph`. See the tools section in core/lib.sh.
 graph_kind() { printf 'invoked'; }
+
+# See serena.sh for what these two are for. The CLI warning is the headline
+# rather than a footnote: the MCP wire has returned "Cannot read properties of
+# undefined" on every call for a release, and an agent that only knows the MCP
+# names concludes the tool is dead.
+graph_oneline() {
+  printf 'CLI only: codebase-memory-mcp cli <tool> %s — the MCP wire errors on every call.' "'<json>'"
+}
+graph_mcp() { printf 'trace_path, detect_changes, get_architecture (CLI, not MCP)'; }

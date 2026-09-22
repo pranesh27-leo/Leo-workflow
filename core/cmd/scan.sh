@@ -40,10 +40,17 @@ mkdir -p "$LEO_DIR"
   _idx=$(base_index "$_base")
   GIT_INDEX_FILE="$_idx" git diff -U0 "$_base" | awk '
     function flush() {
-      if (open) { n++; printf "| %d | `%s:%s` | +%d/-%d |  |  |  |\n", n, file, start, add, del }
+      if (open && file !~ /^\.leo\/plans\//) {
+        n++; printf "| %d | `%s:%s` | +%d/-%d |  |  |  |\n", n, file, start, add, del
+      }
       open = 0; add = 0; del = 0
     }
     /^diff --git /  { flush(); next }
+    # The plan describing this change is not part of the change it describes.
+    # `.leo/plans/` is tracked, so it arrives in the diff like anything else,
+    # and a row asking "why does this hunk exist" about the document that
+    # answers that question for every other row is circular. See
+    # not_bookkeeping in core/lib.sh; nothing else under .leo/ is excluded.
     /^\+\+\+ b\//   { file = substr($0, 7); next }
     /^--- /         { next }
     /^@@/ {
@@ -58,7 +65,7 @@ mkdir -p "$LEO_DIR"
 
   # A new file is one row: git has no hunks to split it by, so the reviewer
   # reads the file. Binaries get a row too, but no line count to pretend with.
-  GIT_INDEX_FILE="$_idx" untracked | while IFS= read -r f; do
+  GIT_INDEX_FILE="$_idx" untracked | not_bookkeeping | while IFS= read -r f; do
     if is_text "$f"; then
       printf '| NEW | `%s` | +%s |  |  |  |\n' "$f" "$(wc -l <"$f" 2>/dev/null | tr -d ' ')"
     else

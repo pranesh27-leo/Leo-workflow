@@ -702,8 +702,14 @@ NO_COLOR=1 "$LEO" scan >/dev/null 2>&1
 sed 's/|  |  |  |/| T1 | it | breaks |/' .leo/manifest.md > "$TMP/m" && mv "$TMP/m" .leo/manifest.md
 
 out=$(NO_COLOR=1 "$LEO" check 2>&1); rc=$?
-has "$out" "caveman" "check names the off tool that was used"
-if [ "$rc" != 0 ] && printf '%s' "$out" | grep -q "caveman"; then
+# Case-insensitive: what check prints is the adapter's display label, and
+# caveman.sh now supplies "Caveman". The assertion is that the message names
+# the tool, not that it spells it the way the ledger does -- the ledger is
+# checked separately, a few lines up, and that one is exact.
+printf '%s' "$out" | grep -qi "caveman" \
+  && ok "check names the off tool that was used" \
+  || bad "check names the off tool that was used"
+if [ "$rc" != 0 ] && printf '%s' "$out" | grep -qi "caveman"; then
   ok "check fails when an off tool was used"
 else
   bad "check did not fail on the off tool (rc=$rc)"
@@ -1133,9 +1139,18 @@ has "$a" "grill"    "AGENTS.md names the grill"
 has "$a" "CONTEXT"  "AGENTS.md points at CONTEXT.md"
 # It loads on every request of every session. A weak model skims a long file,
 # which is the failure this whole change exists to fix.
+#
+# The authority on how big this may be is .leo/rules/ALWAYS-LOADED.md, and it
+# is stated in bytes, because a line cap is defeated by long lines and the
+# model pays for bytes. This line cap is the coarse companion to it and has to
+# move when it does: it went 50 -> 70 when the template grew a tools-block
+# marker and two sentences -- one about deferral, one about a new goal being a
+# new plan. Both are decisions the agent makes before it would have any reason
+# to open the file that explains them, which is the test for earning a place
+# in this file at all.
 n=$(wc -l < AGENTS.md | tr -d ' ')
-[ "$n" -le 50 ] && ok "AGENTS.md is $n lines (<= 50)" \
-                || bad "AGENTS.md is $n lines, over the 50-line budget"
+[ "$n" -le 70 ] && ok "AGENTS.md is $n lines (<= 70)" \
+                || bad "AGENTS.md is $n lines, over the 70-line budget"
 cd "$TMP/repo"
 
 printf 'the benchmark exists, and never runs itself\n'
@@ -1245,8 +1260,13 @@ printf 'the grill has a floor and no ceiling\n'
 # states here is leo overriding the thing it vendored.
 for f in templates/workflow.md templates/AGENTS.md templates/task.md \
          core/cmd/check.sh README.md; do
-  if grep -nE '[0-9]+ *[-–] *[0-9]+ *questions|earns one question|one question is fine|ask [0-9]+ (to|-|–) *[0-9]* *questions' \
-       "$LEOHOME/$f" >/dev/null 2>&1; then
+  # Line breaks removed before the grep. grep is line-based, prose is wrapped,
+  # and "a one-line fix earns one\nquestion" sat in templates/workflow.md for
+  # three releases matching none of these patterns -- a cap on questions,
+  # sixty lines below the paragraph saying there is no cap, in the file that
+  # is the authority on both. The test reported "ok" every time.
+  if tr '\n' ' ' < "$LEOHOME/$f" \
+     | grep -qE '[0-9]+ *- *[0-9]+ *questions|earns one question|one question is fine|ask [0-9]+ (to|-) *[0-9]* *questions'; then
     bad "no question cap in $f"
   else
     ok "no question cap in $f"

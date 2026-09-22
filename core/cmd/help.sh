@@ -7,8 +7,9 @@ cat >&2 <<EOF
 leo $(leo_version) — keep AI-written code reviewable.
 
 CYCLE ONE — build it
-  You    grill the agent, then    leo plan "rate limiting"
+  You    grill the agent, then    leo plan "rate limiting"     <- becomes P1
   Agent  leo task T1              each task gets a file and a to-do
+  Agent  leo defer T2 "<why>"     park what cannot be done yet, and move on
   Agent  builds it one task at a time, updating Status as it goes
   Agent  leo scan                 500 lines -> ~20 rows, one per hunk
   Agent  leo use serena           announces the tool, and logs that it did
@@ -20,7 +21,7 @@ CYCLE ONE — build it
 CYCLE TWO — read it, in a new session
   You    leo session --mode review
   Agent  leo review <sha>         briefed from the commit cycle one wrote
-  Agent  reads the diff against .leo/review/STANDARDS.md, files findings
+  Agent  reads the diff against CODE_REVIEW.md, files findings
   You    leo review --close       no open blocker, a real verdict, signed
 
   Cycle two cannot edit the code. A finding becomes a new cycle one, or a
@@ -38,7 +39,33 @@ COMMANDS
   install [<name>|--all]  install a tool this session declares. Shows the
                           command first. Refuses without a human at a terminal.
                           Nothing else in leo installs anything.
-  plan ["<name>"]         start a change, or show it and where it stands
+  plan ["<name>"]         start the NEXT change, or show the one in flight.
+                          A repository has many plans -- P1, P2, ... -- because
+                          wanting something else next week is not an amendment
+                          to last week. Task ids keep counting across them, so
+                          T4 names one task in this repository forever.
+  plan --list             every plan, and which one is in flight
+  plan --switch P1        go back to an earlier plan
+  defer <id> "<why>"      move a task or subtask to later work. The loop steps
+                          over it: no file, no grill, no check failure. It
+                          stays visible in the plan, in SESSION.md and in the
+                          commit message, with the reason. The reason is not
+                          optional -- without one, a deferral is indistinguish-
+                          able from a task somebody forgot.
+  defer --list            everything deferred in the plan in flight
+  resume <id>             take it back out of later work
+  agents [--auto|--ask]   write this session's tool and MCP instructions into
+                          AGENTS.md, so the agent has them on every request
+                          instead of in a command nobody runs. --ask prints the
+                          question to put to the developer; --auto takes the
+                          mode's own defaults; --check fails if the block
+                          describes a session you are no longer in; --list is
+                          the inventory.
+  docs [--write|--check]  the five companion documents: AGENTS, CONTEXT,
+                          ARCHITECTURE, CODE_REVIEW, RULES -- and SESSION,
+                          which leo writes for you. --write creates what is
+                          missing and refreshes what is generated; --check
+                          fails on a missing or stale one.
   task [T1] [--force]     give a plan task its own file and to-do, or list
                           them all with their progress. The file carries the
                           grill for that task; \`leo check\` fails while it is
@@ -95,8 +122,17 @@ FILES
   .leo/integrations/*.sh  the tools your repo adds. Same contract, no registry.
   .leo/config             TEST_CMD
   .leo/session            current mode (gitignored — it lands in the commit)
-  .leo/plan.md            current change (gitignored — it lands in the commit)
-  .leo/tasks/*.md         one per task: "Done when", a to-do, notes (same)
+  .leo/plans/P1/plan.md   one change: goal, non-goals, tasks, budget. TRACKED:
+                          a plan is the reasoning behind a change and outlives
+                          it, unlike everything else here.
+  .leo/plans/P1/tasks/    one per task: "Done when", a to-do, the grill, notes
+  .leo/current            which plan is in flight (gitignored)
+  ARCHITECTURE.md         how the pieces fit — read on demand
+  RULES.md                an index of .leo/rules/, with the reason for each
+  SESSION.md              where this session stands. Written by leo on the way
+                          out of EVERY command, including the ones that fail,
+                          so it is still true after a session drops. Never
+                          edit it; it is overwritten on the next command.
   .leo/manifest.md        current scope table (same)
   .leo/used               which declared tools built this cycle's hunks (same)
   .claude/skills/*/       the vendored skills, installed where Claude Code
@@ -105,7 +141,7 @@ FILES
   .leo/commits/*.md       one per cycle recorded but not yet landed. Gitignored
                           for the same reason as the rest: each one ends up
                           inside the commit message it describes.
-  .leo/review/STANDARDS.md what cycle two argues against — yours to amend
+  CODE_REVIEW.md          what cycle two argues against — yours to amend
   .leo/reviews/*.md       one review per commit. TRACKED, not gitignored:
                           the plan and the manifest end up inside the commit
                           message they describe, and a review of a commit
@@ -114,8 +150,11 @@ FILES
 AFTER A DISCONNECT
   Nothing lives in the chat, so a dropped session costs nothing:
     leo session --report  the whole change on one screen, and what is next
+    cat SESSION.md        the same thing as a file, written by the command
+                          that failed, whether or not anyone saw it fail
     leo plan              the plan, plus "2 of 5 done | in progress: T3"
     leo task              every task and how far its to-do got
+    leo defer --list      what was put off, and why
     git diff HEAD         the code, still there
     cat .leo/manifest.md  the review table, as far as it got
     leo commit --list     the cycles already recorded, still waiting to land

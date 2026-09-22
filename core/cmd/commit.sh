@@ -88,7 +88,11 @@ if [ "$_check" -eq 1 ]; then
 fi
 
 _msg=$(mktemp "${TMPDIR:-/tmp}/leo-msg.XXXXXX")
-trap 'rm -f "$_msg"' EXIT
+# Registered, not trapped: there is one EXIT trap in leo and it lives in
+# core/lib.sh. Installing a second here would silently replace it, and the
+# session document would stop being written by this command -- see the
+# exit-hooks section there, and .leo/rules/ONE-EXIT-TRAP.md.
+leo_atexit_add 'rm -f "$_msg"'
 
 {
   printf '%s\n\n' "$_subject"

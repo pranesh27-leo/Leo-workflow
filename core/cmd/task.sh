@@ -39,10 +39,17 @@ if [ -z "$_id" ]; then
     _td=$(task_todo "$_t"); _td="${_td:--}"
     printf '  %-5s %-7s %-12s %s\n' \
       "$_t" "$_td" "$(plan_task_status "$_t")" "$(plan_task_name "$_t")" >&2
+    # Deferred subtasks under a task that is otherwise live. Without this line
+    # the only way to discover one is to open the file, and a deferral nobody
+    # can see is a deletion.
+    _ls=$(task_later_subs "$_t")
+    [ -n "$_ls" ] && printf '  %-5s %-7s %-12s %s\n' \
+      "" "" "later" "$_ls" >&2
   done
   [ "$_n" -eq 0 ] && { warn "the plan lists no tasks yet"; exit 0; }
   echo >&2
   dim "  leo task T1        create it, or show it"
+  dim "  leo defer T1 \"why\"   park it; the loop moves to the next task"
   exit 0
 fi
 
@@ -87,6 +94,7 @@ if [ -n "$_sub" ]; then
 
   ok "subtask added: $_id.$_n $_sub"
   dim "  it arrives ungrilled — leo check fails until you record what it settled"
+  dim "  not now? leo defer $_id.$_n \"why\" — deferred subtasks are not grilled"
   exit 0
 fi
 
@@ -101,7 +109,23 @@ if [ -f "$_f" ] && [ "$_force" -eq 0 ]; then
 fi
 
 # --- create ---------------------------------------------------------------
-plan_has_task "$_id" || warn "$_id is not in the plan — add the row, or fix the id"
+# An id the plan in flight does not declare. It might be a typo, and it might
+# be a task from another plan -- which is worth saying, because the fix for the
+# second one is a switch and the fix for the first is a different id. Guessing
+# wrong here sends somebody editing the wrong plan's table.
+if ! plan_has_task "$_id"; then
+  _own=$(task_owner "$_id")
+  if [ -n "$_own" ]; then
+    die "$_id belongs to $_own, not the plan in flight — leo plan --switch $_own"
+  fi
+  warn "$_id is not in the plan — add the row, or fix the id"
+fi
+
+# A task nobody intends to do this week does not need a file, a to-do or a
+# grill. Making one anyway is how a deferral quietly turns back into work.
+if [ "$(plan_task_status "$_id")" = "later" ]; then
+  die "$_id is later work — leo resume $_id first  ($(plan_later_why "$_id"))"
+fi
 
 # The to-do the file starts with. This is the one visible thing the TDD
 # capability does: with it on, the first two steps are red-before-green, and

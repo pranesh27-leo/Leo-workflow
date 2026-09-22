@@ -36,3 +36,14 @@ serena_install() {
 # Invoked: the agent calls this at a moment, so the mark it leaves is the agent
 # saying so -- `leo use serena`. See the tools section in core/lib.sh.
 serena_kind() { printf 'invoked'; }
+
+# The one line an agent can act on without opening anything, and the MCP names
+# it will actually be calling. Both exist for `leo agents`, which writes them
+# into AGENTS.md: the full instructions stay in .leo/tools/serena.md and are
+# read on demand, because AGENTS.md is re-read on every request forever.
+serena_oneline() {
+  printf 'find_symbol / find_referencing_symbols before grep — grep cannot answer "who calls this".'
+}
+serena_mcp() { printf 'find_symbol, find_referencing_symbols, replace_symbol_body'; }
+
+serena_label() { printf 'Serena'; }
