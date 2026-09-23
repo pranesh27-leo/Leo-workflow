@@ -90,11 +90,38 @@ else
   fi
 fi
 
-# 4. leo is bash, not node. Declaring an os list is the honest way to fail on
-#    Windows at install time rather than at first run.
-grep -q '"os"' package.json \
-  && ok "package.json declares the platforms this runs on" \
-  || bad "package.json has no os field — this is a bash tool"
+# 4. The os field must NOT lock Windows out.
+#
+#    This assertion used to be the exact opposite: it required an os list,
+#    on the reasoning that leo is bash and refusing at install time is more
+#    honest than failing at first run. That reasoning was sound and the
+#    conclusion was wrong, because the premise was wrong -- Windows has bash.
+#    Git for Windows ships the one leo wants, npm writes a .cmd and a .ps1
+#    shim that find it, and leo.ps1 preflights it. An os list without win32
+#    makes `npm install -g leo-workflow` fail outright on Windows, and the
+#    user never gets far enough to discover any of that.
+#
+#    A list that includes win32 is fine; no list at all is fine. A list that
+#    omits it is the bug. t/windows.sh checks the same thing from the other
+#    side, and both are kept because this one runs on a publish and that one
+#    runs on every check.
+if grep -q '"os"' package.json; then
+  if grep -A1 '"os"' package.json | grep -q 'win32'; then
+    ok "package.json's os list includes win32"
+  else
+    bad "package.json has an os list without win32 — npm refuses to install on Windows"
+  fi
+else
+  ok "package.json places no os restriction on installing"
+fi
+
+# 5. The Windows entry point and the line-ending policy both have to ship, or
+#    a Windows user gets a package that installs and cannot run.
+for f in leo.ps1 .gitattributes; do
+  grep -q "\"$f\"" package.json \
+    && ok "$f is in the published files list" \
+    || bad "$f is not published — Windows users never receive it"
+done
 
 printf 'what npm would actually ship\n'
 

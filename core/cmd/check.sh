@@ -130,6 +130,28 @@ for _d in CONTEXT.md ARCHITECTURE.md CODE_REVIEW.md RULES.md; do
 done
 [ -n "$_nodoc" ] && warn "missing:$_nodoc — leo docs --write"
 
+# Windows line endings in the files leo reads. `load_shell` in core/lib.sh
+# already survives them where it matters, so this never fails a check -- but
+# surviving is not the same as being right, and a developer whose editor
+# defaults to CRLF should hear it once rather than meet it later as a stray
+# carriage return inside a commit message.
+#
+# The repository's own .gitattributes handles anything that arrives through
+# git. This catches what an editor does afterwards.
+_crlf=""
+for _f in "$LEO_DIR/config" "$SESSION" "$PLAN" "$MANIFEST"; do
+  has_cr "$_f" && _crlf="$_crlf ${_f#"$ROOT"/}"
+done
+for _f in "$TASKS"/*.md; do
+  has_cr "$_f" && _crlf="$_crlf ${_f#"$ROOT"/}"
+done
+[ -n "$_crlf" ] && {
+  warn "Windows line endings (CRLF) in:$_crlf"
+  dim  "  leo reads them anyway, but a stray CR ends up inside the commit message."
+  dim  "  Fix the file:  tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE"
+  dim  "  Fix it for good: the repository ships a .gitattributes forcing LF."
+}
+
 # --- 3. manifest ----------------------------------------------------------
 # Every hunk must name the task it serves, and that task must be one the plan
 # actually declared. Those two together are what turns "500 lines arrived" into

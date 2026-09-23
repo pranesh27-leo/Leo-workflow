@@ -119,6 +119,51 @@ lines_changed() {
 
 now() { date -u '+%Y-%m-%d %H:%M UTC'; }
 
+# ---------------------------------------------------------- line endings ----
+# One carriage return, computed once, so nothing below has to embed a literal
+# one in a pattern where it is invisible to whoever reads the code next.
+CR=$(printf '\r')
+
+# has_cr <file> — does this file have Windows line endings?
+has_cr() { [ -f "$1" ] && LC_ALL=C grep -q "$CR" "$1" 2>/dev/null; }
+
+# load_shell <file> — source a file leo treats as shell, surviving CRLF.
+#
+# `.leo/config` and `.leo/session` are plain `KEY=value` shell precisely so
+# they need no parser. That is still true, and it is exactly why a carriage
+# return is so destructive here: `TEST_CMD="npm test"` saved by Notepad sets
+# the variable to `npm test` followed by a CR, and `leo check` then reports
+#
+#     ERR  npm test failed
+#     command not found
+#
+# ...about a command that is installed and works. The developer is looking at
+# a correct-looking file and an error blaming their test runner, with nothing
+# on screen to connect the two. `MODE=coding` is worse, because it does not
+# fail: `mode_policy` matches `coding` and never `coding\r`, so every
+# capability silently falls through to its adapter default and the declared
+# mode governs nothing at all.
+#
+# .gitattributes stops this for anything that arrives through git. It cannot
+# stop a developer editing their own `.leo/config` in an editor that defaults
+# to CRLF, which on Windows is most of them.
+#
+# The CR check comes first so the common case costs one grep rather than a
+# mktemp, a tr and a temp file on every single leo invocation.
+load_shell() {
+  [ -f "$1" ] || return 0
+  if has_cr "$1"; then
+    _ls_tmp=$(mktemp "${TMPDIR:-/tmp}/leo-src.XXXXXX" 2>/dev/null) || return 0
+    tr -d "$CR" < "$1" > "$_ls_tmp"
+    # shellcheck disable=SC1090
+    . "$_ls_tmp"
+    rm -f "$_ls_tmp"
+  else
+    # shellcheck disable=SC1090
+    . "$1"
+  fi
+}
+
 # -------------------------------------------------------------- assets ----
 # Everything leo reads out of its own install goes through here: the version
 # and the templates. A single-file build (`leo build`) emits these same three
@@ -270,8 +315,7 @@ task_owner() {
 
 # .leo/config is plain `KEY=value` shell so it needs no parser.
 TEST_CMD=""
-# shellcheck disable=SC1090
-[ -f "$LEO_DIR/config" ] && . "$LEO_DIR/config"
+load_shell "$LEO_DIR/config"
 
 # plan_est — the LOC estimate declared in the plan, or empty.
 # The trailing `|| true` matters: a plan with no estimate is a normal state, but
@@ -769,8 +813,7 @@ SESSION="$LEO_DIR/session"
 BUILTIN_CAPS="serena graph rtk headroom ponytail caveman tdd"
 
 MODE=""
-# shellcheck disable=SC1090
-[ -f "$SESSION" ] && . "$SESSION"
+load_shell "$SESSION"
 
 # mode_policy <mode> — the built-in default for each capability, as name=state
 # pairs. Empty for a mode leo does not know, which is how the caller validates
@@ -886,8 +929,7 @@ for _dir in $ADAPTER_DIRS; do
            continue
          } ;;
     esac
-    # shellcheck disable=SC1090
-    . "$_adapter"
+    load_shell "$_adapter"
   done
 done
 

@@ -115,6 +115,12 @@ COMMANDS
   help                    this
 
 FILES
+  leo.ps1                 the Windows entry point. A wrapper, not a port: it
+                          finds a bash (Git for Windows, MSYS2, \$LEO_BASH),
+                          checks it can run leo, hands over, and returns leo's
+                          own exit code. There is one implementation of leo.
+  .gitattributes          pins every shell file to LF. Without it a Windows
+                          checkout gets CRLF and bash dies on a correct script.
   AGENTS.md               agent instructions, loaded every session (keep it short)
   .leo/workflow.md        the loop, read on demand
   .leo/rules/*.md         one lesson per file, each with a shell check

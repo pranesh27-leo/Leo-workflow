@@ -100,6 +100,44 @@ leo build && cp dist/leo ~/your-repo/.leo/bin/leo
 Needs bash 3.2 or newer and git. Nothing else: no node at runtime, no network,
 no daemon.
 
+### Windows
+
+leo is a bash program, and there is exactly one implementation of it — a
+second one in PowerShell would be two programs that have to agree about every
+check and every exit code, and the day they stop agreeing is the day leo
+passes on one platform what it fails on the other.
+
+So Windows needs a bash, and [Git for Windows](https://git-scm.com/download/win)
+ships the right one:
+
+```powershell
+winget install --id Git.Git -e
+npm install -g leo-workflow
+leo init
+```
+
+`npm` puts `leo.cmd` and `leo.ps1` on your PATH, so `leo` works from
+PowerShell, from `cmd.exe` and from Git Bash. The PowerShell wrapper finds your
+bash, checks it can actually run leo, and tells you exactly what is missing
+rather than letting you meet it as a wall of `command not found`.
+
+Bash somewhere else — MSYS2, Cygwin, a portable install? Point leo at it:
+
+```powershell
+$env:LEO_BASH = 'C:\msys64\usr\bin\bash.exe'
+```
+
+WSL works too (`wsl leo check`), but Git Bash is the better answer: WSL sees
+your repository through `/mnt/c`, with its own git and its own view of file
+modes and line endings.
+
+**One thing will bite you if you skip it.** Git for Windows defaults to
+`core.autocrlf=true`, which rewrites shell scripts to CRLF on checkout and
+makes bash fail with `$'\r': command not found` on a file that is otherwise
+perfect. leo ships a `.gitattributes` that pins its own files to LF, and
+`leo check` warns when it finds CRLF in a file you edited. If you hit it
+anyway: `tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE`.
+
 ## Use
 
 ```sh

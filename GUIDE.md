@@ -146,6 +146,60 @@ leo --version
 leo 0.2.0
 ```
 
+### On Windows
+
+leo is bash, and there is one implementation of it. A PowerShell port would be
+a second program that has to agree with the first about every check, every
+message and every exit code — and the day they stop agreeing is the day leo
+passes on one platform what it fails on the other. In a tool whose whole job
+is being trusted about whether a change was reviewed, that trade is not
+available.
+
+So Windows runs the same bash leo, through a bash that Windows has:
+
+```powershell
+winget install --id Git.Git -e     # Git for Windows ships the right bash
+npm install -g leo-workflow
+leo --version
+```
+
+npm writes `leo.cmd` and `leo.ps1` onto your PATH, so `leo` works from
+PowerShell, `cmd.exe` and Git Bash alike. `leo.ps1` is a wrapper, not a port:
+it looks for bash in `$env:LEO_BASH`, then on PATH, then beside `git.exe`,
+then in the usual install locations, checks that the one it found can actually
+run leo, and hands over. Exit codes come back unchanged, so `leo check` in a
+Windows build script means what it means everywhere else.
+
+| Situation | What to do |
+|---|---|
+| bash is somewhere unusual | `$env:LEO_BASH = 'C:\msys64\usr\bin\bash.exe'` |
+| you prefer WSL | `wsl leo check` — works, but see below |
+| the preflight is too slow in a loop | `$env:LEO_SKIP_PREFLIGHT = '1'` |
+
+WSL is supported and is not the recommendation. It sees your repository
+through `/mnt/c` with its own git, its own config, and its own view of file
+modes — so leo can be entirely correct about a repository that Windows tools
+then see differently. Git Bash has none of that distance.
+
+**The one that will bite you.** Git for Windows defaults to
+`core.autocrlf=true`, which rewrites files to CRLF on checkout. Do that to a
+shell script and bash fails with `$'\r': command not found` on a file that is
+byte-for-byte what its author wrote, plus one invisible character per line.
+leo ships a `.gitattributes` pinning its own files to LF so this cannot happen
+to leo itself, and `leo check` warns by name when it finds CRLF in a file you
+edited — because surviving a stray carriage return is not the same as it being
+right, and the CR otherwise ends up inside your commit message. To fix one by
+hand:
+
+```sh
+tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE
+```
+
+`t/windows.sh` is the negative suite for all of this: it audits the shipped
+tree for CRLF, GNU-only flags, reserved Windows filenames, case-insensitive
+collisions and unquoted paths, and it exercises spaces and CRLF for real on
+whatever platform it runs on.
+
 ### Or vendor it into the repository instead
 
 A symlink into `/usr/local/bin` makes every repository on the machine depend
