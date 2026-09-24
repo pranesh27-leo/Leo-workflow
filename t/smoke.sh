@@ -632,6 +632,68 @@ has "$o" "real:text"   "an ordinary file is text"
 has "$o" "bin:binary"  "a file with NULs is still binary"
 cd "$TMP/repo"
 
+printf 'lines_changed batches untracked files instead of spawning per file\n'
+# Found on a real Windows machine: `leo check`, and every command's exit
+# trap, went from instant to a multi-minute hang against a large untracked
+# tree. The old lines_changed() ran `grep -Iq` then `wc -l` once PER
+# untracked file in a plain loop -- ~8s against 3000 files on a fast Mac,
+# because process creation is not free even there, and dramatically more on
+# Windows, where it crosses into Win32 through MSYS's emulation layer.
+#
+# The count, not the clock: a timing assertion is flaky across machines and
+# load. Counting how many times grep and wc actually run is not -- it proves
+# batching happened rather than proving this particular run was fast.
+LCB="$TMP/lcbatch"
+mkdir -p "$LCB" && cd "$LCB"
+git init -q . && git config user.email t@t && git config user.name t
+: > base.txt && git add -A && git commit -qm base >/dev/null
+
+# 120 files: more than two batches at the batch size lib.sh uses (50), so a
+# fix that only handles "everything fits in one call" would not be caught.
+for i in $(seq 1 120); do printf 'one line %s\n' "$i" > "f$i.txt"; done
+mkdir -p "dir with space"
+printf 'a\nb\nc\n' > "dir with space/file with spaces.txt"
+
+CALLS="$TMP/lc-calls"
+SPIES="$TMP/lc-spies"
+mkdir -p "$SPIES"
+: > "$CALLS"
+_real_grep=$(command -v grep)
+_real_wc=$(command -v wc)
+cat > "$SPIES/grep" <<SPY
+#!/bin/sh
+echo grep >> "$CALLS"
+exec "$_real_grep" "\$@"
+SPY
+cat > "$SPIES/wc" <<SPY
+#!/bin/sh
+echo wc >> "$CALLS"
+exec "$_real_wc" "\$@"
+SPY
+chmod +x "$SPIES/grep" "$SPIES/wc"
+
+out=$(
+  PATH="$SPIES:$PATH" LEO_HOME="$LEOHOME"
+  export PATH LEO_HOME
+  . "$LEOHOME/core/lib.sh" >/dev/null 2>&1
+  lines_changed HEAD
+)
+n_calls=$(wc -l < "$CALLS" | tr -d ' ')
+
+[ "$out" = "123" ] \
+  && ok "lines_changed counts 121 files' worth of lines correctly (123)" \
+  || bad "lines_changed got the count wrong: $out (expected 123)"
+
+# Unbatched: 121 files means >=121 grep calls and >=121 wc calls (not_bookkeeping
+# adds exactly one grep on top, once, regardless of file count). Batched at 50
+# per call: 3 batches, at most 2 spawns each, plus that one grep -- 7 at most.
+# 30 is a generous line between "batched" and "one call per file".
+[ "$n_calls" -le 30 ] \
+  && ok "grep+wc ran $n_calls times for 121 files, not one pair each" \
+  || bad "grep+wc ran $n_calls times for 121 files -- looks unbatched"
+
+cd "$TMP/repo"
+
 printf 'a tool switch is a switch: on works, off is refused\n'
 # The bulb test. A capability that is ON must leave evidence it was used; one
 # that is OFF must leave none. Its own repository, with a fixture adapter, so

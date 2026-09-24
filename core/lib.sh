@@ -93,7 +93,7 @@ is_text() { [ ! -s "$1" ] || grep -Iq '' "$1" 2>/dev/null; }
 
 # lines_changed <base> — added + removed across tracked and untracked files.
 # git reports binary diffs as "-", which the awk drops; untracked binaries are
-# dropped by is_text before they ever reach it.
+# excluded the same way batch_text_lines excludes them.
 lines_changed() {
   _b="${1:-HEAD}"
   _idx=$(base_index "$_b")
@@ -101,19 +101,55 @@ lines_changed() {
   # only one, so the same exclusion applies to both halves. See changed().
   { GIT_INDEX_FILE="$_idx" git diff --numstat "$_b" 2>/dev/null \
       | awk -F'\t' '$3 !~ /^\.leo\/plans\//'
-    GIT_INDEX_FILE="$_idx" untracked | not_bookkeeping | while IFS= read -r f; do
-        # `is_text && printf` would be wrong here. A binary or empty file makes
-        # is_text the last command in the loop body, the loop returns 1, and
-        # under `pipefail` the whole substitution fails -- so `set -e` kills the
-        # caller on the assignment, after the correct number was computed. An
-        # untracked .pyc, a .DS_Store or an empty __init__.py was enough to make
-        # `leo check` print the "budget" header and exit with nothing else.
-        if is_text "$f"; then
-          printf '%s\t0\t%s\n' "$(wc -l <"$f" 2>/dev/null || echo 0)" "$f"
-        fi
-      done
+    GIT_INDEX_FILE="$_idx" untracked | not_bookkeeping | batch_text_lines
   } | awk '$1 != "-" { n += $1 + $2 } END { print n + 0 }'
   rm -f "$_idx"
+}
+
+# batch_text_lines — read paths on stdin, print "lines<TAB>0<TAB>path" for
+# every one that is text (binary and empty files silently contribute nothing,
+# which is the same as contributing zero), the numstat format lines_changed's
+# final awk already expects.
+#
+# This used to be `grep -Iq` then `wc -l`, once per path, in a plain
+# `while read` loop -- two process spawns per untracked file. Invisible on a
+# handful of files. Measured at ~8s against 3000 untracked files on a fast
+# Mac, because spawning is not free even there, and it is what turned into a
+# multi-minute leo on a Windows machine with a large untracked tree: process
+# creation on Windows crosses into Win32 through MSYS's emulation layer, and
+# costs far more per spawn than it does natively. `leo check` was completing
+# in seconds on macOS and not completing in five minutes on Windows against
+# comparable repositories, which is what a per-file spawn cost look like once
+# it is multiplied by thousands of files and by a slower spawn.
+#
+# The fix is batching: hand `grep` and `wc` many paths per invocation instead
+# of one. Not via `xargs`, whose default delimiter is any whitespace and
+# would split "my file.txt" into two arguments -- `xargs -d '\n'` fixes that
+# on GNU but does not exist on the `xargs` macOS ships, and this project does
+# not take GNU-only flags. A bash array does not have that problem: each
+# element is one argument regardless of what is inside it. The batch size is
+# what keeps `"${_batch[@]}"` under a command-line length every platform here
+# accepts, Windows included.
+batch_text_lines() {
+  _bt_batch=()
+  _bt_flush() {
+    [ "${#_bt_batch[@]}" -gt 0 ] || return 0
+    _bt_text=$(grep -Il '' "${_bt_batch[@]}" 2>/dev/null || true)
+    if [ -n "$_bt_text" ]; then
+      _bt_files=()
+      while IFS= read -r _bt_f; do _bt_files+=("$_bt_f"); done <<EOF_BT
+$_bt_text
+EOF_BT
+      wc -l "${_bt_files[@]}" 2>/dev/null | grep -v ' total$' \
+        | awk '{ n = $1; sub(/^ *[^ ]+ +/, ""); printf "%s\t0\t%s\n", n, $0 }'
+    fi
+    _bt_batch=()
+  }
+  while IFS= read -r _bt_p; do
+    _bt_batch+=("$_bt_p")
+    [ "${#_bt_batch[@]}" -ge 50 ] && _bt_flush
+  done
+  _bt_flush
 }
 
 
