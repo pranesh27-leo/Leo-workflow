@@ -17,6 +17,10 @@ set -u
 LEOHOME=$(cd -P "$(dirname "$0")/.." && pwd)
 BASH_LEO="$LEOHOME/leo"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/leo-diff.XXXXXX")
+# Normalised, because TMPDIR conventionally ends in a slash and mktemp keeps
+# it: the raw path has "T//leo-diff" in it while $PWD does not, and the
+# fixture guard below compares the two as strings.
+TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
 export NO_COLOR=1
 pass=0; fail=0
@@ -72,9 +76,28 @@ ask_node() {
 # harness exists to catch disagreements; one that passes vacuously is worse
 # than none.
 make_repo() {
-  d="$TMP/$1"; mkdir -p "$d"; cd "$d" || exit 1
+  d="$TMP/$1"; mkdir -p "$d"
+  cd "$d" || { printf 'FATAL: cannot cd to %s\n' "$d" >&2; exit 1; }
   git init -q . && git config user.email t@t && git config user.name t
-  "$BASH_LEO" init >/dev/null 2>&1
+  leo_here init >/dev/null 2>&1
+}
+
+# leo_here — run the bash leo, but only inside a fixture.
+#
+# The guard lives here, at the point of mutation, rather than in make_repo:
+# the bug it exists for put the `cd` in a subshell, so a check inside
+# make_repo passes (the subshell's cwd is right) and the parent still runs
+# every later command in the wrong directory. That is not hypothetical -- it
+# wrote five stray plans into the leo repository itself and clobbered
+# .leo/current, and the harness reported 34/34 while doing it, because empty
+# compares equal to empty. A test that can mutate the tree it is testing is a
+# bug with a blast radius; this makes that impossible rather than unlikely.
+leo_here() {
+  case "$PWD" in
+    "$TMP"/*) ;;
+    *) printf 'FATAL: refusing to run leo outside %s (cwd %s)\n' "$TMP" "$PWD" >&2; exit 1 ;;
+  esac
+  "$BASH_LEO" "$@"
 }
 
 probe() {
@@ -95,13 +118,13 @@ probe() {
 
 printf '\nfresh plan, nothing touched\n'
 make_repo fresh
-"$BASH_LEO" plan "rate limiting" >/dev/null 2>&1
+leo_here plan "rate limiting" >/dev/null 2>&1
 probe "fresh" "$d/.leo/plans/P1/plan.md" "$d/.leo/plans/P1/tasks" "$d/.leo/plans"
 
 printf '\none deferred, with a reason\n'
 make_repo deferred
-"$BASH_LEO" plan "second change" >/dev/null 2>&1
-"$BASH_LEO" defer T2 "waiting on the vendor key" >/dev/null 2>&1
+leo_here plan "second change" >/dev/null 2>&1
+leo_here defer T2 "waiting on the vendor key" >/dev/null 2>&1
 probe "deferred" "$d/.leo/plans/P1/plan.md" "$d/.leo/plans/P1/tasks" "$d/.leo/plans"
 same "deferred: planLaterWhy" \
   "$(ask_bash "$d/.leo/plans/P1/plan.md" x x 'plan_later_why T2')" \
@@ -109,7 +132,7 @@ same "deferred: planLaterWhy" \
 
 printf '\nmid-flight: one done, one in progress\n'
 make_repo midflight
-"$BASH_LEO" plan "third change" >/dev/null 2>&1
+leo_here plan "third change" >/dev/null 2>&1
 P="$d/.leo/plans/P1/plan.md"
 # Rewrite the two scaffold rows into a real mid-flight state.
 awk '
@@ -120,8 +143,8 @@ probe "midflight" "$P" "$d/.leo/plans/P1/tasks" "$d/.leo/plans"
 
 printf '\nids that do not start at 1 (second plan)\n'
 make_repo secondplan
-"$BASH_LEO" plan "first" >/dev/null 2>&1
-"$BASH_LEO" plan "second" >/dev/null 2>&1
+leo_here plan "first" >/dev/null 2>&1
+leo_here plan "second" >/dev/null 2>&1
 probe "P2" "$d/.leo/plans/P2/plan.md" "$d/.leo/plans/P2/tasks" "$d/.leo/plans"
 same "P2: taskOwner(T1)" \
   "$(ask_bash x x "$d/.leo/plans" 'task_owner T1')" \
