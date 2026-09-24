@@ -20,6 +20,11 @@
 *.sh            text eol=lf
 leo             text eol=lf
 
+# The npm entry point. Node does not care about carriage returns, but this
+# file is read by people debugging Windows and a CRLF diff against an LF tree
+# is noise in exactly the place nobody needs more of it.
+bin/*.js        text eol=lf
+
 # Everything leo writes into a repository. These are read by agents and spliced
 # by awk; a stray CR ends up inside a generated AGENTS.md block, inside a task
 # file's to-do, and inside commit messages.

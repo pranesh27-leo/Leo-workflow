@@ -117,12 +117,14 @@ leo init
 ```
 
 `npm` puts `leo.cmd` and `leo.ps1` on your PATH, so `leo` works from
-PowerShell, from `cmd.exe` and from Git Bash. Those shims are npm's own — it
-generates them from leo's `#!/usr/bin/env bash` line — and they run the first
-thing named `bash` on your PATH. leo checks that it really is bash before it
-relies on being bash, and hands over to a real one if it is not. The `leo.ps1`
-that ships inside the package is for running the tool straight out of its
-install directory; it does the same search with better error messages.
+PowerShell, from `cmd.exe` and from Git Bash. Those shims call **node**, not
+bash — `bin/leo.js` is the npm entry point, and it finds a real bash and hands
+over. That indirection is the whole Windows story: if `bin` pointed at the
+bash script, npm would read its shebang and run the first thing named `bash`
+on your PATH, which on a real machine is as likely to be a vendor toolchain's
+BusyBox or the WSL launcher as it is to be Git Bash.
+
+Stuck? `$env:LEO_SHOW_BASH = '1'` makes leo print which bash it picked.
 
 Bash somewhere else — MSYS2, Cygwin, a portable install? Point leo at it:
 

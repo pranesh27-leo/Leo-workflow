@@ -164,17 +164,31 @@ leo --version
 ```
 
 npm writes `leo.cmd` and `leo.ps1` onto your PATH, so `leo` works from
-PowerShell, `cmd.exe` and Git Bash alike. Those two are npm's, generated from
-leo's shebang, and they invoke the first `bash` on your PATH — the `leo.ps1`
-inside the package is not on your PATH and does not get a say. So the search
-lives in `leo` itself: before it uses any bash-only syntax it checks whether
-the shell running it is bash, and if not looks in `$env:LEO_BASH`, then every
-bash on PATH, then the usual Git for Windows locations, and hands over to the
-first one that is genuinely bash. Exit codes come back unchanged, so
-`leo check` in a Windows build script means what it means everywhere else.
+PowerShell, `cmd.exe` and Git Bash alike. What they invoke is `node`, because
+`bin` points at `bin/leo.js`. That choice is the fix for the whole family of
+Windows failures, and it is worth being explicit about why.
 
-The package's own `leo.ps1` does the same search with fuller diagnostics, for
-running leo straight out of its install directory.
+npm generates those shims from the bin target's shebang. Point `bin` at the
+bash script and npm reads `#!/usr/bin/env bash`, writes a shim that runs the
+first thing named `bash` on PATH, and the `leo.ps1` inside the package — the
+one that carefully looks for a bash and checks it — is not on PATH and never
+runs. The interpreter was chosen by npm, from a shebang, before leo had any
+say. Pointing `bin` at a Node program moves that decision inside leo: node is
+guaranteed present, because npm is what installed the package.
+
+`bin/leo.js` looks in `$env:LEO_BASH`, then every bash on PATH, then beside
+`git.exe`, then the usual install locations; it verifies each candidate is
+genuinely bash, hands over with arguments passed as an array rather than
+joined, and returns leo's exit code unchanged — so `leo check` in a Windows
+build script means what it means everywhere else. `$env:LEO_SHOW_BASH = '1'`
+makes it name the bash it chose, which is the first thing worth knowing when
+something on Windows goes wrong.
+
+`leo` keeps a POSIX-sh guard of its own at the top of the file, for the ways
+it is run that never touch npm: a clone, a symlink onto PATH, a single-file
+bundle from `leo build`. It does the same job with the same rules. The
+package's own `leo.ps1` is the third route, for running leo straight out of
+its install directory, and does the same search with fuller diagnostics.
 
 The test for "is this bash" is `BASH_VERSION`, and it is not pedantry. A
 `bash.exe` that is really BusyBox — STM32CubeCLT ships one in `Make\bin`,
