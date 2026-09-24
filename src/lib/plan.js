@@ -236,6 +236,62 @@ function taskOwner(plansDir, id) {
   return '';
 }
 
+
+// --------------------------------------------------------------- subtasks --
+// A subtask is a heading inside its parent's file, never a file of its own.
+// One file per subtask turns a five-task change into twenty files, and an
+// agent that must read four of them to answer one question pays four reads to
+// do it. The parent's reasoning and every child's arrive in a single read.
+
+function subtaskIds(tasksDir, id) {
+  const body = readIfFile(taskFile(tasksDir, id));
+  if (body === null) return [];
+  const out = [];
+  for (const line of body.split('\n')) {
+    const f = line.split(/\s+/);
+    if (f[0] === '##' && f[1] && f[1].indexOf(id + '.') === 0) out.push(f[1]);
+  }
+  return out;
+}
+
+// subtaskState <task-id> <subtask-id> — "later" or empty.
+function subtaskState(tasksDir, id, sub) {
+  const body = readIfFile(taskFile(tasksDir, id));
+  if (body === null) return '';
+  let here = false;
+  for (const line of body.split('\n')) {
+    const f = line.split(/\s+/);
+    if (f[0] === '##') here = (f[1] === sub);
+    if (here && /^Status: *later/.test(line)) return 'later';
+  }
+  return '';
+}
+
+function taskLaterSubs(tasksDir, id) {
+  return subtaskIds(tasksDir, id).filter((s) => subtaskState(tasksDir, id, s) === 'later');
+}
+
+// taskUngrilled <task-id> — how many sections still carry the ungrilled
+// marker, NOT counting deferred ones.
+//
+// The exclusion is the point. A subtask that has been put off has not been
+// grilled and must not be: grilling it would mean answering questions about
+// work that is not happening, and the answers would be guesses. Counting it
+// would make `leo check` unpassable until somebody either did the work or
+// deleted the subtask, which is exactly the pressure that gets deferrals
+// deleted instead of recorded.
+function taskUngrilled(tasksDir, id) {
+  const body = readIfFile(taskFile(tasksDir, id));
+  if (body === null) return 0;
+  let later = false, n = 0;
+  for (const line of body.split('\n')) {
+    if (/^## /.test(line)) later = false;
+    if (/^Status: *later/.test(line)) later = true;
+    if (line.indexOf('leo:ungrilled') !== -1 && !later) n++;
+  }
+  return n;
+}
+
 module.exports = {
   planRows, planTasks, planHasTask, planRow,
   planTaskName, planTaskStatus, planTaskEst, planTaskFiles,
@@ -243,4 +299,5 @@ module.exports = {
   taskCurrent, planLater, planLaterWhy,
   taskFile, taskTodo,
   plansList, planPath, planNextId, taskNextN, taskOwner,
+  subtaskIds, subtaskState, taskLaterSubs, taskUngrilled,
 };
