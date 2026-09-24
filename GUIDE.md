@@ -164,11 +164,33 @@ leo --version
 ```
 
 npm writes `leo.cmd` and `leo.ps1` onto your PATH, so `leo` works from
-PowerShell, `cmd.exe` and Git Bash alike. `leo.ps1` is a wrapper, not a port:
-it looks for bash in `$env:LEO_BASH`, then on PATH, then beside `git.exe`,
-then in the usual install locations, checks that the one it found can actually
-run leo, and hands over. Exit codes come back unchanged, so `leo check` in a
-Windows build script means what it means everywhere else.
+PowerShell, `cmd.exe` and Git Bash alike. Those two are npm's, generated from
+leo's shebang, and they invoke the first `bash` on your PATH — the `leo.ps1`
+inside the package is not on your PATH and does not get a say. So the search
+lives in `leo` itself: before it uses any bash-only syntax it checks whether
+the shell running it is bash, and if not looks in `$env:LEO_BASH`, then every
+bash on PATH, then the usual Git for Windows locations, and hands over to the
+first one that is genuinely bash. Exit codes come back unchanged, so
+`leo check` in a Windows build script means what it means everywhere else.
+
+The package's own `leo.ps1` does the same search with fuller diagnostics, for
+running leo straight out of its install directory.
+
+The test for "is this bash" is `BASH_VERSION`, and it is not pedantry. A
+`bash.exe` that is really BusyBox — STM32CubeCLT ships one in `Make\bin`,
+scoop's `busybox` package installs another — runs, exits 0 and answers
+`--version` with a bash version string, then meets `${BASH_SOURCE[0]}` and
+says `line 15: syntax error: bad substitution`, naming a line of perfectly
+good bash. Anything that checks only whether the candidate *runs* accepts it.
+Only bash sets `BASH_VERSION`.
+
+Two candidates pass that test and are still wrong: `System32\bash.exe` and
+the `WindowsApps` alias for it are the WSL launcher, and WSL's bash is bash.
+They are excluded by path, and excluded *before* being executed, because
+probing one can boot a distribution or open the Microsoft Store. On a typical
+developer's machine both sit ahead of Git Bash on PATH — and Git Bash is
+often not on PATH at all, which is why the search also asks `git.exe` where
+it lives.
 
 | Situation | What to do |
 |---|---|

@@ -86,6 +86,19 @@ leo_atexit_add 'rm -f "$_tmp"'
   printf '# build again, or your change is lost the next time anyone does.\n'
   printf '#\n'
   printf '# This file is the whole install. It reads nothing next to itself.\n'
+
+  # The not-bash guard, copied out of the source leo rather than written again
+  # here. A bundle is a single-file install somebody puts on a Windows PATH,
+  # so it meets the same BusyBox-named-bash the npm install does -- and two
+  # copies of the guard would be two things to keep in step, with the one that
+  # drifts being the one nobody runs on a Mac. It has to land before
+  # `set -euo pipefail`, which is itself a line a non-bash shell can die on.
+  _guard=$(sed -n '/^# -.*not bash? -/,/^fi$/p' "$LEO_HOME/leo")
+  case "$_guard" in
+    *'exec "$_leo_bash"'*) printf '%s\n\n' "$_guard" ;;
+    *) die "build: could not lift the not-bash guard out of $LEO_HOME/leo" ;;
+  esac
+
   printf 'set -euo pipefail\n\n'
 
   # LEO_SELF is what `leo commit` re-execs to run the checks, and in a bundle

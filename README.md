@@ -117,9 +117,12 @@ leo init
 ```
 
 `npm` puts `leo.cmd` and `leo.ps1` on your PATH, so `leo` works from
-PowerShell, from `cmd.exe` and from Git Bash. The PowerShell wrapper finds your
-bash, checks it can actually run leo, and tells you exactly what is missing
-rather than letting you meet it as a wall of `command not found`.
+PowerShell, from `cmd.exe` and from Git Bash. Those shims are npm's own — it
+generates them from leo's `#!/usr/bin/env bash` line — and they run the first
+thing named `bash` on your PATH. leo checks that it really is bash before it
+relies on being bash, and hands over to a real one if it is not. The `leo.ps1`
+that ships inside the package is for running the tool straight out of its
+install directory; it does the same search with better error messages.
 
 Bash somewhere else — MSYS2, Cygwin, a portable install? Point leo at it:
 
@@ -131,7 +134,27 @@ WSL works too (`wsl leo check`), but Git Bash is the better answer: WSL sees
 your repository through `/mnt/c`, with its own git and its own view of file
 modes and line endings.
 
-**One thing will bite you if you skip it.** Git for Windows defaults to
+**A bash that is not bash.** If `leo` dies with
+
+```
+C:/Users/you/.../leo-workflow/leo: line 15: syntax error: bad substitution
+```
+
+then something on your PATH is named `bash.exe` and is not bash. It answers
+`bash --version` convincingly and then cannot parse the first line of real
+bash it meets. Vendor toolchains are the usual source — STM32CubeCLT ships one
+in `Make\bin`, and scoop's `busybox` package installs another — and they land
+ahead of Git Bash on PATH. Run `Get-Command bash -All` to see yours.
+
+leo steps over these and keeps looking. It also steps over
+`C:\Windows\system32\bash.exe` and the `WindowsApps` alias beside it, which
+*are* bash but are the WSL launcher: WSL sees your repository through
+`/mnt/c`, so handing it a `C:\...` path fails and handing it a repository
+succeeds for the wrong reasons. Use `wsl leo check` when you want that on
+purpose. If no real bash is found, install Git for Windows or set
+`$env:LEO_BASH` as above.
+
+**Line endings will bite you if you skip this.** Git for Windows defaults to
 `core.autocrlf=true`, which rewrites shell scripts to CRLF on checkout and
 makes bash fail with `$'\r': command not found` on a file that is otherwise
 perfect. leo ships a `.gitattributes` that pins its own files to LF, and

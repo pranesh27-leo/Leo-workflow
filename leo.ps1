@@ -83,8 +83,13 @@ function Test-BashCandidate {
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
     try {
-        $probe = & $Path -c 'printf ready' 2>$null
-        return ($LASTEXITCODE -eq 0 -and $probe -eq 'ready')
+        # Not "can this run?" but "is this bash?". A BusyBox applet named
+        # bash.exe -- scoop installs one, so do several portable toolchains --
+        # runs and exits 0 and answers --version, and then dies on the first
+        # ${BASH_SOURCE[0]} with "syntax error: bad substitution", naming a
+        # line of correct bash. BASH_VERSION is the question only bash answers.
+        $probe = & $Path -c 'printf %s "${BASH_VERSION-}"' 2>$null
+        return ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($probe))
     } catch {
         return $false
     }

@@ -503,6 +503,196 @@ len=${longest%% *}
   || bad "a path is ${len} chars: ${longest#* } — close to MAX_PATH once installed"
 
 # =========================================================================
+printf '\na bash that is not bash — what npm actually runs on Windows\n'
+# =========================================================================
+
+# The bug this section exists for, reported from a real Windows machine:
+#
+#   PS> npm install -g leo-workflow
+#   PS> leo init
+#   C:/Users/.../leo-workflow/leo: line 15: syntax error: bad substitution
+#
+# Line 15 was `_self="${BASH_SOURCE[0]}"`, which is correct bash. The shell
+# quoting it was BusyBox ash wearing the name bash.exe, and "syntax error:
+# bad substitution" is its grammar, not bash's.
+#
+# The path there has nothing to do with leo.ps1. `npm install -g` reads the
+# shebang, writes its OWN leo.cmd and leo.ps1 into the global bin directory,
+# and runs the first `bash` on PATH -- the wrapper this repository ships is
+# never consulted. So the guard has to live in the bash script itself, which
+# means it has to be POSIX sh, which is the thing these tests check.
+
+guard_start=$(grep -n '^if \[ -z "\${BASH_VERSION:-}" \]; then$' "$LEO" | cut -d: -f1)
+# Comments only, excluded: the guard's own comment explains what BASH_SOURCE
+# is and would otherwise count as the thing it is there to come before.
+first_bashism=$(grep -nE 'BASH_SOURCE|set -euo' "$LEO" \
+  | grep -v '^[0-9]*: *#' | head -1 | cut -d: -f1)
+
+if [ -n "$guard_start" ] && [ "$guard_start" -lt "${first_bashism:-0}" ]; then
+  ok "leo checks it is running under bash before the first bash-only line"
+else
+  bad "leo reaches bash-only syntax before checking the shell is bash"
+fi
+
+# The guard is only useful if the shell that cannot run leo can still run the
+# guard. Anything bash-only inside it fails in exactly the way it is there to
+# prevent -- and fails at PARSE time, so the error names the guard instead.
+if [ -n "$guard_start" ]; then
+  guard_end=$(awk -v s="$guard_start" 'NR>=s && /^fi$/ {print NR; exit}' "$LEO")
+  bashisms=$(sed -n "${guard_start},${guard_end}p" "$LEO" \
+    | grep -nE '\[\[|\]\]|<<<|\$\{[A-Za-z_][A-Za-z0-9_]*\[|^\s*local |&>|\bfunction ' \
+    | grep -v '^[0-9]*: *#' || true)
+  if [ -z "$bashisms" ]; then
+    ok "the guard itself is POSIX sh — the shell it rescues can parse it"
+  else
+    bad "the guard uses bash-only syntax, so it cannot run where it is needed"
+    printf '%s\n' "$bashisms" | sed 's/^/        /' | head -5
+  fi
+fi
+
+# Run leo under every non-bash shell on this machine. dash is the closest
+# stand-in for BusyBox ash that a Unix box reliably has; zsh and ksh are here
+# because they fail differently -- zsh does not word-split unquoted
+# expansions, so an IFS-based candidate loop finds nothing there and reports
+# "no bash" on a machine full of bash.
+ran_any=0
+for sh in dash ksh zsh sh ash busybox; do
+  shpath=$(command -v "$sh" 2>/dev/null) || continue
+  [ -n "$shpath" ] || continue
+  # Skip a shell that IS bash (on many systems /bin/sh is bash): it exercises
+  # the fast path, not the guard.
+  if "$shpath" -c 'printf %s "${BASH_VERSION-}"' 2>/dev/null | grep -q .; then
+    continue
+  fi
+  ran_any=1
+  out=$("$shpath" "$LEO" --version 2>&1)
+  if printf '%s' "$out" | grep -q '^leo '; then
+    ok "$sh runs leo — the guard found a real bash and handed over"
+  else
+    bad "$sh cannot run leo: $out"
+  fi
+done
+[ "$ran_any" -eq 1 ] || note "no non-bash shell on this machine to run the guard against"
+
+# The reported failure, reproduced: a shell named bash, first on PATH, that
+# is not bash. This is what scoop's busybox package installs.
+FAKEBIN="$TMP/fakebin"
+mkdir -p "$FAKEBIN"
+impostor_shell=$(command -v dash 2>/dev/null || command -v ash 2>/dev/null || true)
+if [ -n "$impostor_shell" ]; then
+  # An impostor that answers --version convincingly, because the real ones do.
+  cat > "$FAKEBIN/bash" <<IMPOSTOR
+#!$impostor_shell
+case "\$1" in --version) echo "GNU bash, version 5.2.15(1)-release"; exit 0 ;; esac
+exec $impostor_shell "\$@"
+IMPOSTOR
+  chmod +x "$FAKEBIN/bash"
+
+  out=$(PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
+  printf '%s' "$out" | grep -q '^leo ' \
+    && ok "an impostor bash first on PATH is stepped over, not trusted" \
+    || bad "impostor bash on PATH breaks leo: $out"
+
+  # Specifically not the old bug.
+  printf '%s' "$out" | grep -qi 'bad substitution' \
+    && bad "still dies with 'bad substitution' under an impostor bash" \
+    || ok "no 'bad substitution' — the reported Windows failure is gone"
+
+  # --version is one word. The re-exec has to carry arguments through without
+  # re-splitting them, and leo takes free text: `leo plan "rate limiting"`.
+  R="$TMP/reexec-args"
+  mkdir -p "$R"
+  ( cd "$R" && git init -q . \
+      && git config user.email t@t && git config user.name t \
+      && PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" init >/dev/null 2>&1 \
+      && PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" plan "rate limiting" >/dev/null 2>&1 )
+  if grep -rq 'rate limiting' "$R/.leo/plans" 2>/dev/null; then
+    ok "a quoted multi-word argument survives the hand-over intact"
+  else
+    bad "the re-exec re-split its arguments — 'rate limiting' did not arrive whole"
+  fi
+
+  # LEO_BASH is the documented escape hatch; it has to outrank PATH.
+  out=$(LEO_BASH=$(command -v bash) PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
+  printf '%s' "$out" | grep -q '^leo ' \
+    && ok "LEO_BASH overrides the impostor on PATH" \
+    || bad "LEO_BASH did not win: $out"
+else
+  note "no dash or ash here to impersonate bash with"
+fi
+
+# Two entries on a real Windows PATH are bash and are still the wrong answer,
+# and both normally sit ahead of Git Bash:
+#
+#   C:\Windows\system32\bash.exe                  the WSL launcher
+#   C:\Users\x\AppData\Local\Microsoft\WindowsApps\bash.exe   an alias for it
+#
+# The BASH_VERSION probe ACCEPTS these, because WSL's bash really is bash --
+# and then leo is handed a C:/Users/... path WSL cannot open. They have to be
+# excluded by path, and excluded before being run: probing one can boot a
+# distribution or open the Microsoft Store.
+#
+# So the assertion is not "leo still works" but "that file was never
+# executed", which is what the marker proves.
+if [ -n "$impostor_shell" ]; then
+  real_bash=$(command -v bash)
+  for trap_dir in System32 WindowsApps; do
+    T="$TMP/wsltrap/$trap_dir"
+    mkdir -p "$T"
+    marker="$TMP/wsltrap/$trap_dir.probed"
+    rm -f "$marker"
+    # A real, working bash -- so nothing but the path rule can reject it.
+    cat > "$T/bash.exe" <<TRAP
+#!/bin/sh
+echo probed >> "$marker"
+exec "$real_bash" "\$@"
+TRAP
+    chmod +x "$T/bash.exe"
+
+    out=$(PATH="$FAKEBIN:$T:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
+    if [ -e "$marker" ]; then
+      bad "$trap_dir/bash.exe was executed — WSL gets probed, and may get used"
+    elif printf '%s' "$out" | grep -q '^leo '; then
+      ok "$trap_dir/bash.exe is skipped by path and never run"
+    else
+      bad "$trap_dir exclusion broke the search: $out"
+    fi
+  done
+else
+  note "no impostor shell — cannot test the WSL exclusion"
+fi
+
+# A bundle is a single-file install, and somebody puts it on a Windows PATH.
+# It is generated by `leo build`, which writes its own preamble -- so the
+# guard being in the source tree says nothing about it being in the bundle.
+bundle="$TMP/bundle-leo"
+if "$LEO" build --out "$bundle" >/dev/null 2>&1; then
+  if [ -f "$bundle" ]; then
+    if [ -n "$impostor_shell" ]; then
+      out=$("$impostor_shell" "$bundle" --version 2>&1)
+      printf '%s' "$out" | grep -q '^leo ' \
+        && ok "the single-file bundle carries the guard too" \
+        || bad "the bundle drops the guard — it dies off bash: $out"
+    else
+      grep -q 'BASH_VERSION' "$bundle" \
+        && ok "the single-file bundle carries the guard too" \
+        || bad "the bundle drops the guard"
+    fi
+  else
+    note "leo build reported success but wrote no bundle"
+  fi
+else
+  note "leo build did not run here"
+fi
+
+# The probe is the whole trick. `bash --version` and `bash -c 'printf ready'`
+# both succeed against BusyBox, which is why the first version of the
+# PowerShell wrapper would have accepted it too.
+grep -q 'BASH_VERSION' "$LEOHOME/leo.ps1" \
+  && ok "leo.ps1 asks candidates for BASH_VERSION, not just whether they run" \
+  || bad "leo.ps1 accepts any shell that runs — BusyBox passes that test"
+
+# =========================================================================
 printf '\ndocumentation — a Windows user must be told what to install\n'
 # =========================================================================
 
