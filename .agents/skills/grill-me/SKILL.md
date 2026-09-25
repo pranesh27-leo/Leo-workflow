@@ -1,20 +1,42 @@
 ---
 name: grill-me
-description: A relentless interview to sharpen a plan or design. Use before every task and every subtask.
+description: A relentless interview to sharpen a plan or design. Use before every task and every subtask, and whenever the user says "grill me".
 disable-model-invocation: true
+license: MIT
 ---
 
-Read `.agents/skills/grilling/SKILL.md` and follow it exactly. Invent nothing.
+<!--
+Adapted from Matt Pocock's `grilling` skill, github.com/mattpocock/skills,
+under the MIT licence in LICENSE beside this file — which is his and travels
+with the copy.
 
-That file is the definition of a grill. It is **not leo's** -- it is Matt
-Pocock's, copied byte-for-byte from github.com/mattpocock/skills under the
-MIT licence in `.agents/skills/LICENSE`, and vendored rather than referenced
-so it cannot drift between two sessions.
+Two changes, both to the wrapper and none to the method: his `grilling` and
+`grill-me` were two files, one of which only said "call the Skill tool with
+grilling" — an instruction exactly one runtime can follow. They are one file
+here, named for the trigger, so any runtime can read it. The interview below
+is his, unchanged.
+-->
 
-This file is adapted from his under the same licence: his says to call Claude
-Code's Skill tool, and this names the path instead so any runtime can follow
-it.
+Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
 
-If your runtime has a skill mechanism of its own, this entry is what it
-invokes and the line above is all it needs to do. If it does not, the path
-is still the answer: open the file and follow it.
+Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.
+
+Format a round like so:
+
+```
+❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+
+➡️ <your recommended answer>
+
+---
+
+❓ **Q2** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+
+➡️ <your recommended answer>
+```
+
+Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
+
+Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
+
+The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.

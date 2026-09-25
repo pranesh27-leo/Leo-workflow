@@ -1,6 +1,6 @@
 {
   "name": "leo-workflow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A markdown agent harness: the loop, the skills, and the instructions. One command copies it in; nothing runs after that.",
   "keywords": ["ai", "agents", "agent-harness", "agents-md", "code-review", "workflow", "claude", "cursor", "codex", "skills"],
   "license": "MIT",

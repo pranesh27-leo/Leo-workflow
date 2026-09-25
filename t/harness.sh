@@ -39,16 +39,26 @@ for f in AGENTS.md \
          .agents/leo.md \
          .agents/tools/graph.md \
          .agents/tools/rtk.md \
-         .agents/skills/LICENSE \
-         .agents/skills/grilling/SKILL.md \
          .agents/skills/grill-me/SKILL.md \
+         .agents/skills/tdd/SKILL.md \
          .agents/skills/ponytail/SKILL.md \
          .agents/skills/caveman/SKILL.md \
-         .claude/skills/grilling/SKILL.md \
+         .agents/skills/humanizer/SKILL.md \
          .claude/skills/grill-me/SKILL.md \
+         .claude/skills/tdd/SKILL.md \
          .claude/skills/ponytail/SKILL.md \
-         .claude/skills/caveman/SKILL.md; do
+         .claude/skills/caveman/SKILL.md \
+         .claude/skills/humanizer/SKILL.md; do
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
+done
+
+# Vendored work travels with its own licence, in its own directory. One
+# LICENSE at the top for five skills from three authors leaves a reader
+# guessing which terms cover what.
+for s in grill-me ponytail humanizer; do
+  [ -f ".agents/skills/$s/LICENSE" ] \
+    && ok "$s ships the licence it is used under" \
+    || bad "$s is vendored with no licence beside it"
 done
 
 # Running it twice must not touch a repository somebody has since edited.
@@ -131,7 +141,7 @@ for stage in grill plan task subtask build manifest commit brief findings close;
 done
 
 # The mode table and the skills that exist have to be the same set.
-for skill in grilling ponytail caveman; do
+for skill in grill-me tdd ponytail caveman humanizer; do
   grep -qi "$skill" "$R/AGENTS.md" \
     && ok "AGENTS.md maps $skill to modes" \
     || bad "$skill ships but AGENTS.md never says when to use it"
@@ -157,24 +167,44 @@ grep -q 'TDD: yes' "$R/.agents/leo.md" && grep -q 'TDD: no' "$R/.agents/leo.md" 
 grep -q "developer's" "$R/.agents/leo.md" \
   && ok "leo.md marks the stages that are not the agent's" \
   || bad "leo.md never says which stages the agent must not do"
-grep -qi 'never commit' "$R/AGENTS.md" \
-  && ok "AGENTS.md forbids committing" \
-  || bad "AGENTS.md does not forbid committing"
-grep -qi 'never install' "$R/AGENTS.md" \
-  && ok "AGENTS.md forbids installing" \
-  || bad "AGENTS.md does not forbid installing"
+# Read the standing-orders section, not the whole file, and not a fixed
+# sentence. The orders are a table now; grepping for the literal phrase
+# "never commit" passed only while they happened to be written as prose, and
+# a test that breaks on reformatting is testing the format rather than the
+# rule.
+orders=$(awk '/^## Standing orders/{f=1} f' "$R/AGENTS.md")
+printf '%s' "$orders" | grep -qi 'never' \
+  && ok "AGENTS.md has a standing-orders section of prohibitions" \
+  || bad "AGENTS.md has no standing orders"
+# The table ROW, not the word anywhere in the section. "After a commit, tell
+# them to start a fresh session" sits in the same section and contains
+# "commit", so a loose grep passed with the prohibition deleted -- the guard
+# reported a rule that was no longer there.
+for forbidden in commit install; do
+  printf '%s' "$orders" | grep -qE "^\| *$forbidden *\|" \
+    && ok "standing orders forbid $forbidden" \
+    || bad "standing orders have no row forbidding $forbidden"
+done
 
 # =========================================================================
 printf '\nthe vendored grill is untouched\n'
 # =========================================================================
 # It is somebody else's file under his licence. Byte-for-byte or it is not
 # vendored, it is forked.
-n=$(wc -c < "$R/.agents/skills/grilling/SKILL.md" | tr -d ' ')
-[ "$n" = 1987 ] && ok "grilling/SKILL.md is 1987 bytes, as upstream" \
-               || bad "grilling/SKILL.md is $n bytes — it has been edited"
-grep -q 'Matt Pocock' "$R/.agents/skills/LICENSE" \
-  && ok "the licence that travels with it is present" \
-  || bad "the vendored licence is missing or wrong"
+# Vendored byte-for-byte. A size that drifts means somebody edited someone
+# else's file in place, which is a fork wearing a vendor's name.
+for pair in "ponytail 6637" "humanizer 28728"; do
+  set -- $pair
+  n=$(wc -c < "$R/.agents/skills/$1/SKILL.md" | tr -d ' ')
+  [ "$n" = "$2" ] && ok "$1/SKILL.md is $2 bytes, as upstream" \
+                  || bad "$1/SKILL.md is $n bytes, upstream is $2 — it has been edited"
+done
+grep -q 'Matt Pocock' "$R/.agents/skills/grill-me/LICENSE" \
+  && ok "grill-me carries Matt Pocock's licence" \
+  || bad "grill-me's licence is missing or wrong"
+grep -qi 'DietrichGebert' "$R/.agents/skills/ponytail/LICENSE" \
+  && ok "ponytail carries its author's licence" \
+  || bad "ponytail's licence is missing or wrong"
 # grill-me IS modified, and says so. Claiming otherwise would misattribute a
 # changed file to its author.
 grep -qi 'adapted' "$R/.agents/skills/grill-me/SKILL.md" \
@@ -194,7 +224,8 @@ printf '\nwhat npm would ship\n'
 cd "$HOME_DIR"
 listing=$(npm pack --dry-run 2>&1 || true)
 for f in bin/leo.js .agents/AGENTS.md .agents/leo.md \
-         .agents/skills/grilling/SKILL.md .agents/tools/rtk.md; do
+         .agents/skills/grill-me/SKILL.md .agents/skills/humanizer/SKILL.md \
+         .agents/skills/ponytail/LICENSE .agents/tools/rtk.md; do
   printf '%s' "$listing" | grep -q "$f" \
     && ok "npm ships $f" \
     || bad "npm would drop $f"

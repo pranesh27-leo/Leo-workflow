@@ -12,17 +12,18 @@ runs during your work, nothing watches, nothing to keep installed.
 
 ## What you get
 
-```
-AGENTS.md                          the one file every agent loads
-.agents/leo.md                     every stage, and exactly what to write
-.agents/skills/grilling/SKILL.md   how to interview before building
-.agents/skills/grill-me/SKILL.md   the trigger
-.agents/skills/ponytail/SKILL.md   do not write code that should not exist
-.agents/skills/caveman/SKILL.md    say it once, say it short
-.agents/tools/graph.md             code graph — call chains, blast radius
-.agents/tools/rtk.md               terminal output reduction
-.claude/skills/*/                  the same four, where Claude Code reads them
-```
+| file | what it is |
+|---|---|
+| `AGENTS.md` | the one file every agent loads |
+| `.agents/leo.md` | every stage: the git command that shows the truth, and the file you write |
+| `.agents/skills/grill-me/` | interview before building — *Matt Pocock's, adapted* |
+| `.agents/skills/tdd/` | test first, and watch it fail |
+| `.agents/skills/ponytail/` | what you build — *vendored, MIT* |
+| `.agents/skills/caveman/` | what you say — cut what was not asked for |
+| `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
+| `.agents/tools/graph.md` | code graph — call chains, blast radius |
+| `.agents/tools/rtk.md` | terminal output reduction |
+| `.claude/skills/*/` | the same five, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
@@ -36,23 +37,36 @@ follows. Both are yours to set, and the agent is told never to change them.
 
 ## The loop
 
+`TDD: yes` — the test comes first, and the agent watches it fail:
+
 ```
-1  grill -> plan -> task -> subtask -> build -> manifest -> commit
-2  brief -> read -> findings -> close
+grill -> plan -> task -> subtask -> test -> build -> manifest -> commit
 ```
 
-Cycle one builds. Cycle two reads a commit in a **new session** and cannot
-edit code — a finding is not a fix; the fix is a new cycle one.
+`TDD: no` — the test comes after, and is still not optional:
 
-What each stage means and exactly what to write is `.agents/leo.md`. That is
-the only description of the loop, so there is nothing for it to disagree
-with.
+```
+grill -> plan -> task -> subtask -> build -> test -> manifest -> commit
+```
 
-The stage that carries the weight is **manifest**: one row per hunk, each
-naming the task it serves, why it exists, and what breaks if it is deleted.
-It goes into the commit message body, so six months later `git blame` →
-`git show` tells you which task a line served, with no AI in the loop and
-nothing installed.
+Cycle two, in a new session, cannot edit code:
+
+```
+brief -> findings -> close
+```
+
+Same stages either way; the order *is* the difference. `commit` and `close`
+are yours, not the agent's.
+
+Every stage is a **git command that shows the truth** and a **file written
+from what it showed** — `git diff` for the manifest, `git show <sha>` for the
+review. git reports, the agent decides, and the decision lands where `git
+log` will still have it. `.agents/leo.md` is the only description of it.
+
+The stage carrying the weight is **manifest**: one row per hunk, each naming
+the task it serves, why it exists, and what breaks if it is deleted. It goes
+into the commit message body, so six months later `git blame` → `git show`
+answers the question with no AI in the loop and nothing installed.
 
 ## Why there is no program
 
@@ -105,14 +119,21 @@ npm install -g leo-workflow@0.8.2
 
 MIT.
 
-`grilling` is **not leo's**. It is Matt Pocock's, copied byte-for-byte from
-[mattpocock/skills](https://github.com/mattpocock/skills) under the MIT
-licence in `.agents/skills/LICENSE`, which is his and travels with the copy.
-It is vendored rather than referenced because the grill is the first stage of
-the loop, and a stage whose definition lives on someone else's default branch
-is a stage that can change under you between two sessions.
+Three of the five skills are other people's work. Each is vendored rather
+than referenced — a stage whose definition lives on someone else's default
+branch can change under you between two sessions — and each ships the licence
+it is used under, in its own directory.
 
-`grill-me` is **adapted** from his, under the same licence. His version says
-to call Claude Code's Skill tool; this one names the file to read, so a
-runtime without that mechanism can follow it too. The change is the pointer
-and nothing else.
+| skill | whose | terms |
+|---|---|---|
+| `ponytail` | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT, byte-for-byte |
+| `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT, byte-for-byte |
+| `grill-me` | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT, **adapted** |
+
+`grill-me` is adapted rather than copied and says so in the file. Upstream is
+two files, one of which only says "call the Skill tool with grilling" — an
+instruction exactly one runtime can follow. They are one file here, named for
+the trigger, so any runtime can read it. The interview method is his,
+unchanged.
+
+`tdd` and `caveman` are leo's own.

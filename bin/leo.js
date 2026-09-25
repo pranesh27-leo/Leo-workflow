@@ -32,7 +32,13 @@ const SRC = path.join(HOME, '.agents');
 // Code reads skills from that path and nowhere else, and a skill nobody's
 // runtime loads is the bug this vendoring exists to fix. Any other runtime
 // is pointed at .agents/skills/, which is the canonical copy.
-const SKILLS = ['grilling', 'grill-me', 'ponytail', 'caveman'];
+const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer'];
+
+// Three of the five are somebody else's work, vendored under their own
+// licence, and the licence travels in the same directory as the file it
+// covers -- not one LICENSE at the top for all of them, which would leave a
+// reader guessing which terms applied to what.
+const LICENSED = ['grill-me', 'ponytail', 'humanizer'];
 
 function plan() {
   const out = [['AGENTS.md', 'AGENTS.md']];
@@ -40,11 +46,15 @@ function plan() {
   for (const t of ['graph', 'rtk']) {
     out.push([path.join('tools', t + '.md'), path.join('.agents', 'tools', t + '.md')]);
   }
-  out.push(['skills/LICENSE', path.join('.agents', 'skills', 'LICENSE')]);
   for (const s of SKILLS) {
     const rel = path.join('skills', s, 'SKILL.md');
     out.push([rel, path.join('.agents', rel)]);
     out.push([rel, path.join('.claude', 'skills', s, 'SKILL.md')]);
+  }
+  for (const s of LICENSED) {
+    const rel = path.join('skills', s, 'LICENSE');
+    out.push([rel, path.join('.agents', rel)]);
+    out.push([rel, path.join('.claude', 'skills', s, 'LICENSE')]);
   }
   return out;
 }
