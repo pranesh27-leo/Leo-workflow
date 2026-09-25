@@ -14,15 +14,15 @@ the point: git reports, you decide, and the decision is written down where
 | # | stage | run this to see the truth | write this |
 |---|---|---|---|
 | 1 | grill | — | the task's `## Grill` section |
-| 2 | plan | `git log --oneline -20` | `.agents/plan.md` |
+| 2 | plan | `git log --oneline -20` · graph `get_architecture` | `.agents/plan.md` |
 | 3 | task | — | `.agents/tasks/T1.md` |
 | 4 | subtask | — | a `## T1.1` heading inside `T1.md` |
 | 5 | test *(TDD only)* | `<your test command>` | the failing test |
 | 6 | build | `git status --short` | the code, one task at a time |
-| 7 | manifest | `git diff` · `git status --short` | `.agents/manifest.md` |
+| 7 | manifest | `git diff` · `git status --short` · graph `detect_changes` | `.agents/manifest.md` |
 | 8 | commit | `git diff --stat` · `git log -1` | the message — **the developer runs it** |
 | 9 | brief | `git show <sha>` | — |
-| 10 | findings | `git show -U0 <sha>` | `.agents/reviews/<sha>.md` |
+| 10 | findings | `git show -U0 <sha>` · graph `trace_path` | `.agents/reviews/<sha>.md` |
 | 11 | close | — | the verdict — **the developer signs it** |
 
 Stages 1–8 are cycle one. Stages 9–11 are cycle two, in a **new session**,
@@ -100,6 +100,10 @@ afterwards; you may not skip it.
 
 `git status --short` to see where you are starting from.
 
+Debugging rather than building? The code graph answers "what can even reach
+this" before you read a line: `codebase-memory-mcp cli trace_path '<json>'`,
+inbound first. That set is usually far smaller than it feels like.
+
 Write the code for **one task at a time**. Update its `Status` in the plan
 and tick its to-do as you go.
 
@@ -117,6 +121,11 @@ commands, read the real output, and fill the table from it:
 git diff                 # every hunk, in full — read this, not your memory
 git status --short       # anything new that the diff does not show
 git diff --stat          # the line count, for the budget row
+
+# If the code graph is installed, this is the moment for it: it maps the
+# diff to the symbols it touches, which is the question this table asks one
+# row at a time. Not installed? Say so once and fill the table from the diff.
+codebase-memory-mcp cli detect_changes '{}'
 ```
 
 Copy `.agents/templates/manifest.md` to `.agents/manifest.md` and fill it

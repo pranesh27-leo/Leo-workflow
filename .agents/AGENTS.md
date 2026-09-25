@@ -132,13 +132,20 @@ to, the file wins and the line is a bug.
 
 ## Tools
 
-| tool | file | what it does |
-|---|---|---|
-| code graph | `.agents/tools/graph.md` | who calls what, what a diff touches |
-| rtk | `.agents/tools/rtk.md` | filters shell output structurally |
+Same contract as the skills: the table says ON, so you reach for it at the
+moments below without being told to. "Check the code graph for this" is not
+an instruction the developer should have to give.
 
-Both optional and external. Missing one is not an error: say so and carry on.
-**Never install anything** — show the developer the command from the tool's
+| tool | reach for it, every reply it is ON | the detail |
+|---|---|---|
+| **code graph** | **Before the manifest**, `detect_changes` on the diff — it answers the same question the table asks, one row at a time. **Debugging**: `trace_path` inbound first — what can even reach the broken thing. **Learning**: `get_architecture`, then `trace_path` outbound. Always the CLI: `codebase-memory-mcp cli <tool> '<json>'`. | `.agents/tools/graph.md` |
+| **rtk** | Ambient — already filtering your shell output, nothing to invoke. Keep leo's own file reads out of the hook's rewrite: a filtered read of a table you are about to fill in is a table you fill in wrong. | `.agents/tools/rtk.md` |
+
+Both are optional and external, and **missing one is not an error**. Say so
+**once**, the first time you would have used it, and carry on without it —
+repeating it every reply is noise about a fact that has not changed.
+
+**Never install anything.** Show the developer the command from the tool's
 file and let them decide.
 
 ## Standing orders

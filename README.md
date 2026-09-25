@@ -44,6 +44,13 @@ is loaded on every request, so what it says is in force on every request, and
 each active skill's rule is written there in one line so it applies without
 the agent stopping to open anything.
 
+The tools work the same way. "Check the code graph for this" is not an
+instruction you should have to give: the mode says the graph is ON, so the
+agent runs `detect_changes` before writing the manifest and `trace_path`
+before reading a bug, because those moments are written beside the stages
+that want them. A tool that is not installed is reported **once** and then
+worked around, not announced every reply.
+
 The agent names which skills are in force and which tools it used, in every
 reply. A skill you can see being applied is one you can object to; one
 applied silently is indistinguishable from one not applied at all.

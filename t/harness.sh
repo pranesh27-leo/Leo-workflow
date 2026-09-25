@@ -172,6 +172,36 @@ for tool in graph rtk; do
     || bad "$tool ships but AGENTS.md never mentions it"
 done
 
+# Tools get the same treatment as skills: the rule for WHEN to reach for one
+# lives in the always-loaded file, not only in the tool's own document. A
+# pointer table says a tool exists; it does not make the agent use it, and
+# the developer ends up typing "check the code graph for this" -- the
+# instruction this harness exists to remove.
+# The table HEADER, not the phrase anywhere -- the prose above it also says
+# "reach for it", so a loose grep passed with the table reverted to a pointer
+# list. Same failure as the per-reply check: guarding a sentence rather than
+# a structure.
+grep -qE '^\| *tool *\| *reach for it' "$R/AGENTS.md" \
+  && ok "the tools table carries the rule, not just a pointer" \
+  || bad "the tools table is a pointer list — using one is still a per-turn decision"
+
+# And the moments are named in the stages themselves, so reaching for a tool
+# is part of doing the stage rather than something remembered separately.
+for moment in detect_changes trace_path; do
+  grep -q "$moment" "$R/.agents/leo.md" \
+    && ok "leo.md names $moment at the stage that wants it" \
+    || bad "leo.md never says where $moment fits in the loop"
+done
+
+# Missing tools must be reported once, not every turn. A fact that has not
+# changed since the last reply is noise on this one.
+# "once" appears all over this file -- the developer configures the session
+# once, a grill runs once per task. The rule being guarded is specifically
+# about not repeating a missing tool, so match that sentence.
+grep -qE 'once.*first time you would have used it' "$R/AGENTS.md" \
+  && ok "AGENTS.md says to report a missing tool once, not repeatedly" \
+  || bad "nothing stops a missing tool being announced every reply"
+
 # Every template the documents tell the agent to copy must be a file the
 # copier ships. This is the same dangling-pointer failure as a missing skill,
 # one indirection further along.
