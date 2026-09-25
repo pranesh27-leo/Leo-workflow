@@ -14,10 +14,21 @@
 // in it anywhere.
 
 const handlers = [];
+const finalHandlers = [];
 let ran = false;
 
 function atexitAdd(fn) {
   handlers.push(fn);
+}
+
+// atexitLast — runs after every ordinary handler, whenever it was registered.
+//
+// Registration order is the wrong tool for this. The timing report has to
+// include the session-document write, and that is registered later than
+// anything which could sensibly ask to report on it -- so "last" has to be a
+// property of the handler rather than of when it was added.
+function atexitLast(fn) {
+  finalHandlers.push(fn);
 }
 
 // The handler must not change the status it was called with, and must not
@@ -26,7 +37,7 @@ function atexitAdd(fn) {
 function runHandlers() {
   if (ran) return;
   ran = true;
-  for (const fn of handlers) {
+  for (const fn of handlers.concat(finalHandlers)) {
     try {
       fn();
     } catch (e) {
@@ -51,4 +62,4 @@ function install() {
   });
 }
 
-module.exports = { atexitAdd, install, runHandlers };
+module.exports = { atexitAdd, atexitLast, install, runHandlers };

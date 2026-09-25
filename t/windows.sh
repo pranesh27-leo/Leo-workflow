@@ -116,6 +116,28 @@ n=$(wc -l < "$CALLS" | tr -d ' ')
 [ "${n:-0}" -eq 0 ] \
   && ok "leo --version spawns no grep/wc/sed/awk, with 60 untracked files" \
   || bad "leo --version spawned $n shell utilities — the per-file cost is back"
+
+# And the git calls are counted too, because the expensive one is invisible
+# from the outside. `ls-files --others` against leo's SCRATCH index is a full
+# uncached walk of the working tree -- the real .git/index carries
+# untracked-cache and fsmonitor, a freshly-built one carries neither -- so on
+# a large repository it dwarfs everything else leo does while looking exactly
+# like a hang.
+#
+# changed() and linesChanged() each used to build their own index and run
+# their own walk, so every command paid for two. The assertion is a count,
+# not a clock: one walk per command, and a second one means the pair has
+# drifted apart again.
+"$LEO" init >/dev/null 2>&1
+walks=$(LEO_TIMING=1 "$LEO" session 2>&1 | grep -c 'ls-files --others' || true)
+[ "${walks:-0}" -le 1 ] \
+  && ok "leo session walks the working tree ${walks:-0} time(s), not twice" \
+  || bad "leo session ran $walks untracked scans — changed/linesChanged split again"
+
+ncalls=$(LEO_TIMING=1 "$LEO" session 2>&1 | sed -n 's/^leo: \([0-9]*\) git call.*/\1/p')
+[ "${ncalls:-99}" -le 5 ] \
+  && ok "leo session makes ${ncalls} git call(s) — the exit trap is not doubling them" \
+  || bad "leo session makes ${ncalls} git calls — something is scanning twice"
 cd "$LEOHOME"
 
 # =========================================================================

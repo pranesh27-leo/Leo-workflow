@@ -106,6 +106,9 @@ function run(argv) {
 
 function main(argv) {
   exitTrap.install();
+  // Last, so the session-document write is inside the numbers rather than
+  // after them -- it is the part most likely to be the slow one.
+  exitTrap.atexitLast(require('./lib/repo').reportTimings);
   let code = 0;
   try {
     code = run(argv);

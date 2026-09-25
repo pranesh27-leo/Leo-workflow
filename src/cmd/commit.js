@@ -27,7 +27,7 @@ const { spawnSync } = require('child_process');
 const { info, dim, ok, warn, err, die, head_, LeoExit } = require('../lib/ui');
 const { needRepo } = require('../lib/ctx');
 const { isFile, readIfFile, tmpDir } = require('../lib/fsx');
-const { git, changed, linesChanged } = require('../lib/repo');
+const { git, changed, changeStats } = require('../lib/repo');
 const caps = require('../lib/caps');
 const { records, recordCount, recordField, recordBase } = require('../lib/records');
 const { sessionDesc } = require('../lib/session');
@@ -192,7 +192,8 @@ function run(ctx) {
     if (!process.env.LEO_YES) {
       head_('about to commit');
       info('  ' + subject);
-      info('  ' + changed('HEAD').length + ' file(s), ' + linesChanged('HEAD') + ' lines');
+      const size = changeStats('HEAD');
+      info('  ' + size.files.length + ' file(s), ' + size.lines + ' lines');
       if (n > 0) info('  ' + n + ' recorded cycle(s), landing as one commit');
       // Work done after the last record belongs to no cycle: it was never
       // scanned, never manifested, and it is about to be committed alongside

@@ -11,7 +11,7 @@ const path = require('path');
 const { info, dim, ok, warn, die, head_, C_DIM, C_OFF } = require('../lib/ui');
 const { needRepo } = require('../lib/ctx');
 const { isFile, isDir, mkdirp, readIfFile } = require('../lib/fsx');
-const { changed, linesChanged } = require('../lib/repo');
+const { changeStats } = require('../lib/repo');
 const p = require('../lib/plan');
 const caps = require('../lib/caps');
 const { recordCount } = require('../lib/records');
@@ -151,7 +151,8 @@ function run(ctx) {
       const td = p.taskTodo(ctx.tasks, ct);
       if (td) row('To-do', ct + '  ' + td + ' done');
     }
-    row('Change size', changed('HEAD').length + ' file(s), ' + linesChanged('HEAD') + ' lines');
+    const size = changeStats('HEAD');
+    row('Change size', size.files.length + ' file(s), ' + size.lines + ' lines');
 
     const mr = manifestReport(ctx.manifest);
     if (mr) {

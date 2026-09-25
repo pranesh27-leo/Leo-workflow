@@ -1,6 +1,6 @@
 {
   "name": "leo-workflow",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Keep AI-written code reviewable: a plan, a manifest of every hunk, and both inside the commit message.",
   "keywords": ["ai", "code-review", "git", "workflow", "agents", "claude", "cursor", "codex", "windows", "powershell"],
   "license": "MIT",

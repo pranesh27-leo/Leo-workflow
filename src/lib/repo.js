@@ -20,8 +20,20 @@ const fs = require('fs');
 const path = require('path');
 const { tmpDir, isText, countLines } = require('./fsx');
 
+// LEO_TIMING=1 reports every git call and what it cost, on the way out.
+//
+// This exists because "leo is slow" has now been investigated twice from the
+// outside, once over several rounds of guessing, and both times the answer
+// was a git call nobody could see. The expensive one is never the obvious
+// one: `ls-files --others` against leo's scratch index is a full uncached
+// walk of the working tree, and on a large repository it dwarfs everything
+// else leo does -- while looking, from the outside, exactly like a hang.
+const TIMING = Boolean(process.env.LEO_TIMING);
+const timings = [];
+
 function git(args, opts) {
   const o = opts || {};
+  const t0 = TIMING ? Date.now() : 0;
   const res = spawnSync('git', args, {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
@@ -29,12 +41,25 @@ function git(args, opts) {
     cwd: o.cwd,
     env: o.env ? Object.assign({}, process.env, o.env) : process.env,
   });
+  if (TIMING) timings.push({ ms: Date.now() - t0, cmd: 'git ' + args.join(' ') });
   return {
     status: res.status === null ? 1 : res.status,
     stdout: res.stdout || '',
     stderr: res.stderr || '',
     error: res.error,
   };
+}
+
+// Reported from the exit hook so the session-document write -- which runs
+// after every command and is the thing most likely to be slow -- is in the
+// total rather than missing from it.
+function reportTimings() {
+  if (!TIMING || !timings.length) return;
+  const total = timings.reduce((a, t) => a + t.ms, 0);
+  process.stderr.write('\nleo: ' + timings.length + ' git call(s), ' + total + 'ms\n');
+  for (const t of timings) {
+    process.stderr.write('  ' + String(t.ms).padStart(6) + 'ms  ' + t.cmd + '\n');
+  }
 }
 
 // gitLines — stdout split into non-empty lines. git's porcelain and plumbing
@@ -100,55 +125,70 @@ function notBookkeeping(paths) {
   return paths.filter((p) => !p.startsWith('.leo/plans/'));
 }
 
-// changed <base> — every file that differs from <base>, plus files that did
-// not exist in it at all. Sorted and de-duplicated, as `sort -u` did.
-function changed(base) {
-  const b = base || 'HEAD';
-  const idx = baseIndex(b);
-  try {
-    const diffed = gitLines(['diff', '--name-only', b], { env: { GIT_INDEX_FILE: idx } });
-    const all = notBookkeeping(diffed.concat(untracked(idx)));
-    return Array.from(new Set(all)).sort();
-  } finally {
-    dropIndex(idx);
-  }
-}
-
-// linesChanged <base> — added + removed across tracked and untracked files.
+// changeStats <base> — the file list and the line count, from ONE scan.
 //
-// git reports a binary diff as "-" in both numstat columns; those rows are
-// skipped. Untracked files have no diff to measure, so they count their whole
-// length -- but only if they are text, which is why isText is consulted
-// before countLines rather than after.
-function linesChanged(base) {
+// Both numbers come from the same three git calls: a scratch index, one
+// `diff --numstat` (which carries the paths as well as the counts, so there
+// is no need to ask for --name-only separately) and one untracked scan.
+//
+// The combined form exists because the separate ones were being called in
+// pairs, and each built its own scratch index and ran its own untracked
+// scan -- six git calls for three calls' worth of answers. That is cheap on
+// a small repository and is not cheap at all on a large one: `ls-files
+// --others` against a *scratch* index is a full, uncached walk of the
+// working tree, because a brand new index carries none of the caching
+// extensions (untracked-cache, fsmonitor) that the real `.git/index`
+// accumulates. Doing that walk twice per command, on every command, is what
+// a leo that "hangs" is actually doing.
+function changeStats(base) {
   const b = base || 'HEAD';
   const idx = baseIndex(b);
   try {
-    let total = 0;
+    const env = { GIT_INDEX_FILE: idx };
+    const files = [];
+    let lines = 0;
 
-    const numstat = git(['diff', '--numstat', b], { env: { GIT_INDEX_FILE: idx } });
+    const numstat = git(['diff', '--numstat', b], { env });
     if (numstat.status === 0) {
       for (const line of numstat.stdout.split('\n')) {
         if (line === '') continue;
         const f = line.split('\t');
         if (f.length < 3) continue;
         if (f[2].startsWith('.leo/plans/')) continue;
-        if (f[0] === '-' || f[1] === '-') continue; // binary
-        total += (parseInt(f[0], 10) || 0) + (parseInt(f[1], 10) || 0);
+        files.push(f[2]);
+        // A binary diff is "-" in both columns; it has a row but no count.
+        if (f[0] === '-' || f[1] === '-') continue;
+        lines += (parseInt(f[0], 10) || 0) + (parseInt(f[1], 10) || 0);
       }
     }
 
     for (const f of notBookkeeping(untracked(idx))) {
-      if (isText(f)) total += countLines(f);
+      files.push(f);
+      // Untracked files have no diff to measure, so they count their whole
+      // length -- but only if they are text, which is why isText is consulted
+      // before countLines rather than after.
+      if (isText(f)) lines += countLines(f);
     }
 
-    return total;
+    return { files: Array.from(new Set(files)).sort(), lines };
   } finally {
     dropIndex(idx);
   }
 }
 
+// changed <base> — every file that differs from <base>, plus files that did
+// not exist in it at all. Sorted and de-duplicated, as `sort -u` did.
+function changed(base) {
+  return changeStats(base).files;
+}
+
+// linesChanged <base> — added + removed across tracked and untracked files.
+function linesChanged(base) {
+  return changeStats(base).lines;
+}
+
 module.exports = {
   git, gitLines, repoRoot, baseIndex, dropIndex,
-  untracked, notBookkeeping, changed, linesChanged,
+  untracked, notBookkeeping, changeStats, changed, linesChanged,
+  reportTimings,
 };

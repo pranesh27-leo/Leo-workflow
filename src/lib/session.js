@@ -11,7 +11,7 @@
 // tree at one moment, and the durable record is the commit message.
 
 const { readIfFile, isFile, isDir, writeAtomic } = require('./fsx');
-const { changed, linesChanged } = require('./repo');
+const { changeStats } = require('./repo');
 const plan = require('./plan');
 const caps = require('./caps');
 const { recordCount } = require('./records');
@@ -139,7 +139,10 @@ function sessionDoc(ctx, adapters) {
   const later = plan.planLater(ctx.plan);
   if (later.length) w('| Later | ' + later.join(' ') + ' |');
 
-  w('| Change size | ' + changed('HEAD').length + ' file(s), ' + linesChanged('HEAD') + ' line(s) |');
+  // One scan for both numbers. This runs on the way out of every single
+  // leo command, so it is the line that decides what leo costs.
+  const size = changeStats('HEAD');
+  w('| Change size | ' + size.files.length + ' file(s), ' + size.lines + ' line(s) |');
   w('| Manifest | ' + (manifestSummary(ctx.manifest) || 'none') + ' |');
   w('| Recorded, unlanded | ' + recordCount(ctx.records) + ' cycle(s) |');
   w('| Next | ' + nextStep(ctx) + ' |');
