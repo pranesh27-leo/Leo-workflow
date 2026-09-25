@@ -1,8 +1,8 @@
 {
   "name": "leo-workflow",
-  "version": "0.8.2",
-  "description": "Keep AI-written code reviewable: a plan, a manifest of every hunk, and both inside the commit message.",
-  "keywords": ["ai", "code-review", "git", "workflow", "agents", "claude", "cursor", "codex", "windows", "powershell"],
+  "version": "1.0.0",
+  "description": "A markdown agent harness: the loop, the skills, and the instructions. One command copies it in; nothing runs after that.",
+  "keywords": ["ai", "agents", "agent-harness", "agents-md", "code-review", "workflow", "claude", "cursor", "codex", "skills"],
   "license": "MIT",
   "homepage": "https://github.com/pranesh27-leo/Leo-workflow#readme",
   "repository": { "type": "git", "url": "git+https://github.com/pranesh27-leo/Leo-workflow.git" },
@@ -10,17 +10,10 @@
   "bin": { "leo": "bin/leo.js" },
   "files": [
     "bin/",
-    "leo",
-    ".gitattributes",
-    "src/",
-    "templates/",
+    ".agents/",
     "VERSION",
     "LICENSE",
-    "README.md",
-    "GUIDE.md"
+    "README.md"
   ],
-  "engines": { "node": ">=14.14" },
-  "scripts": {
-    "test": "bash t/smoke.sh && bash t/negative.sh && bash t/windows.sh"
-  }
+  "engines": { "node": ">=14" }
 }

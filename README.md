@@ -1,324 +1,118 @@
 # leo
 
-A workflow for working with coding agents, in ~500 lines of POSIX shell.
-
-It exists to answer one question: **when 500 lines arrive that you did not
-type, how do you know they are the right 500 lines — and how do you debug them
-at 3am without an AI?**
-
-## The seven ideas
-
-1. **The agent grills you before it plans.** It asks questions in rounds — each
-   with a recommended default — and stops after each round instead of running
-   ahead. There is no limit on how many: it keeps going until you and it share
-   the same understanding and you say so. The grill itself is Matt Pocock's
-   `grill-me` skill, vendored unmodified into `.leo/skills/`. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
-   tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
-   is specific enough to measure against. A vague plan justifies anything.
-   Then `leo task T1` gives each of those numbered tasks its own file: what
-   *done* looks like, a to-do the agent ticks as it goes, and the decisions the
-   code cannot record. A session that ends mid-task costs nothing.
-2. **A manifest makes a diff reviewable.** `leo scan` turns the diff into one
-   row per hunk. The agent fills in *which task this serves*, *why*, and *what
-   breaks if it is deleted*. You read ~20 rows and spot-check the risky ones.
-   `leo check` then rejects any task ID the plan never declared, so the agent
-   cannot invent a justification, and reports the unwanted work in lines:
-   `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
-   500 lines did I not ask for?"
-3. **You commit, not the agent — and only once.** A cycle ends at
-   `leo record`, which files the commit message that cycle earned and lands
-   nothing. Run cycle one as many times as the change needs; `leo commit` then
-   folds every record into a single commit, refuses to run without a human at
-   a terminal, and is yours. Having just written the code, the agent is the
-   last party that should decide the code is done — and it was being asked
-   that question once per cycle, when the honest answer only exists once.
-4. **The record belongs in the commit message.** Not in git notes, not in a side
-   file, not in a chat log. `git blame` → `git show` and you get the reason a
-   line exists, from git alone, forever.
-5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
-   that exits non-zero when a known mistake reappears. It runs on every
-   `leo check`, costs no tokens, and outlives the session that learned it.
-6. **The tool switches are switches, and you see them flip.** Your agent does
-   not read your code directly — a semantic index, an output filter and a
-   context compressor may each have had a turn first, and the diff records none
-   of it. `leo session --mode debugging` declares which of them this work wants,
-   and it is enforced rather than merely recorded: before using one the agent
-   runs `leo use serena`, which **prints what it is using for you to see** and
-   logs it in the same action, so what you read and what `leo check` reads
-   cannot drift apart. A tool that is ON and never used fails the check. A tool
-   that is OFF is refused at the moment of use, and the attempt is recorded so
-   ignoring the refusal fails too. leo installs none of them, and none of them
-   can turn a check off. Each ships an instruction file — `.leo/tools/<name>.md`
-   — pointed at when the tool is used rather than loaded up front, so seven
-   tools cost a session that needed one nothing.
-
-   leo cannot force an agent to call a tool; nothing can, from a shell. What it
-   can do is refuse to pass until the evidence is there, which is the same trade
-   the grill has always made.
-
-7. **The author does not review the change.** A commit ends the first cycle and
-   starts a second one, in a new session: `leo review` opens a review of the
-   commit that just landed and *cannot edit your code* — there is no stage in it
-   that writes to the source tree. It arrives briefed rather than blank, because
-   `leo commit` already put the goal, the whole manifest and the session into
-   the commit message, and the plan and task files still hold the non-goals and
-   the decisions the grill settled. A reviewer who does not know what was asked
-   for can only check the code against itself, which is how a change that is
-   internally consistent and completely wrong passes. A `blocker` holds the
-   review open until you fix it — as a new first cycle — or waive it in writing.
-
-**New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
-complete change, with real output at every step.
-
-**Want to see it work first? [Read the demo](DEMO.md)** — one recorded session
-against `pallets/click`, fixing a real defect in it, checked against click's
-own 1990-test suite. Including the three times leo rejected the change before
-it landed.
-
-## Install
+A markdown agent harness. The loop, the skills, and the instructions for
+each stage — as files your agent reads, in your repository.
 
 ```sh
-npm install -g leo-workflow
-cd ~/your-repo && leo init
+npx leo-workflow init
 ```
 
-Or from a clone, which is the same tool and the same files — npm is only
-carrying it:
+That is the whole installation. It copies thirteen files and exits. Nothing
+runs during your work, nothing watches, nothing to keep installed.
 
-```sh
-ln -s "$PWD/leo" /usr/local/bin/leo
-cd ~/your-repo && leo init
+## What you get
+
+```
+AGENTS.md                          the one file every agent loads
+.agents/leo.md                     every stage, and exactly what to write
+.agents/skills/grilling/SKILL.md   how to interview before building
+.agents/skills/grill-me/SKILL.md   the trigger
+.agents/skills/ponytail/SKILL.md   do not write code that should not exist
+.agents/skills/caveman/SKILL.md    say it once, say it short
+.agents/tools/graph.md             code graph — call chains, blast radius
+.agents/tools/rtk.md               terminal output reduction
+.claude/skills/*/                  the same four, where Claude Code reads them
 ```
 
-Or vendor a single self-contained file into the repository itself, so it
-depends on something it contains rather than on a clone on somebody's laptop:
+Open `AGENTS.md` and fill in the block at the top:
 
-```sh
-leo build && cp dist/leo.js ~/your-repo/.leo/bin/leo.js
+```
+Mode: coding        <- coding | debugging | learning | review | exploration
+TDD:  yes           <- yes | no
 ```
 
-Needs node 14 or newer and git. Nothing else: no dependencies, no network, no
-daemon. `npm ls` on a leo install prints one line, and that is the point —
-leo is a tool for keeping a repository honest, and a tool like that earning a
-supply chain of its own would be funny in the wrong way.
+The mode picks which skills apply. `TDD` picks which build stages the agent
+follows. Both are yours to set, and the agent is told never to change them.
 
-### Windows
+## The loop
 
-leo is a Node program, and Windows is a supported platform rather than a
-platform it is ported to. `npm install -g leo-workflow` is the whole
-installation:
-
-```powershell
-npm install -g leo-workflow
-leo init
+```
+1  grill -> plan -> task -> subtask -> build -> manifest -> commit
+2  brief -> read -> findings -> close
 ```
 
-npm puts `leo.cmd` and `leo.ps1` on your PATH, and both invoke `node` — which
-is guaranteed to be there, because node is what ran npm.
+Cycle one builds. Cycle two reads a commit in a **new session** and cannot
+edit code — a finding is not a fix; the fix is a new cycle one.
 
-That indirection is the whole Windows story, and it was learned the hard way.
-leo used to be a bash program, and every Windows release from 0.7.0 to 0.7.4
-was a bug caused by that:
+What each stage means and exactly what to write is `.agents/leo.md`. That is
+the only description of the loop, so there is nothing for it to disagree
+with.
 
-| | what you saw | what it was |
+The stage that carries the weight is **manifest**: one row per hunk, each
+naming the task it serves, why it exists, and what breaks if it is deleted.
+It goes into the commit message body, so six months later `git blame` →
+`git show` tells you which task a line served, with no AI in the loop and
+nothing installed.
+
+## Why there is no program
+
+leo was a CLI. `leo scan` turned the diff into a manifest, `leo check`
+enforced it, `leo commit` assembled the message. Eight commands, a plan
+registry, a capability system, 415 tests.
+
+It was also five consecutive releases of Windows bugs — an impostor `bash`
+from a vendor toolchain, the WSL launcher answering to the same name, a
+per-file subprocess that turned `leo --version` into a four-minute hang on a
+large repository. Every one was the cost of a program running where it was
+not native, and none were bugs in the workflow.
+
+The workflow was always the product. The program generated markdown and
+checked that markdown existed; an agent can read the instruction and write
+the file, which is what it does with every other instruction in the
+repository. So the instructions ship and the program does not.
+
+What is lost is enforcement: nothing now fails a build because a hunk has no
+row. `.agents/leo.md` makes the agent check itself at the manifest stage and
+report honestly, which is weaker than a gate and is the trade. What is kept
+is the artefact — the manifest in the commit message — which is the half that
+still answers questions in two years.
+
+## Tools
+
+Two, both optional, both self-contained binaries on macOS, Linux and
+Windows. Missing one is not an error.
+
+| | what it does | install |
 |---|---|---|
-| 0.7.0 | `syntax error: bad substitution` | npm read the shebang and ran the first `bash.exe` on PATH — BusyBox, from a vendor toolchain |
-| 0.7.1 | `/bin/bash: C:/...: No such file` | the fix accepted `System32\bash.exe`, which *is* bash, and is the WSL launcher |
-| 0.7.3 | worked | the entry point stopped being a shell script |
-| 0.7.4 | `leo --version` hung for minutes | `grep` and `wc` ran once per untracked file, and a process spawn on Windows costs an order of magnitude more than it does natively |
+| [code graph](https://github.com/DeusData/codebase-memory-mcp) | who calls what, what a diff touches | one-line script, no runtime |
+| [rtk](https://github.com/rtk-ai/rtk) | filters shell output structurally | `brew install rtk` · `winget install rtk-ai.rtk` |
 
-None of those were bugs in leo's logic. They were the cost of running a POSIX
-program on a system that emulates POSIX, and the port removed the cost rather
-than tuning it. There is no bash to find, no interpreter to guess at, and
-nothing spawns a process per file.
+The agent is told never to install them — it shows you the command.
 
-**Line endings are the one thing left.** Git for Windows defaults to
-`core.autocrlf=true`, which rewrites files on checkout. Node tolerates a
-carriage return where bash did not, so this no longer breaks leo outright —
-but leo *reads* `.leo/config`, and a CR used to end up inside the value:
-`TEST_CMD="npm test"` became a command that does not exist. leo strips them on
-read now, ships a `.gitattributes` pinning its own files to LF, and
-`leo check` still names any CRLF file it finds, because a stray carriage
-return otherwise lands inside your commit message.
+## Upgrading from 0.x
 
-## Use
+1.0.0 is a different tool with the same name. If you were using the CLI,
+`leo scan`, `leo check`, `leo record`, `leo commit`, `leo review`,
+`leo plan`, `leo task` and `leo defer` no longer exist, and neither does
+`SESSION.md` or `.leo/`. The last CLI release is tagged `v0.8.2` and stays
+installable:
 
 ```sh
-leo session --mode coding       # optional: what kind of work this is
-leo install --all               # optional: get what that mode declares
-leo agents --ask                # which tools may the agent use? Ask, then:
-leo agents --auto               # write the answer into AGENTS.md, with the
-                                # MCP names and the one rule for each
-leo plan "rate limiting"        # after the agent has grilled you. Opens P1;
-                                # the next thing you want opens P2.
-leo task T1                     # each task gets a file and a to-do
-leo defer T2 "no sandbox key"   # cannot do it yet? Park it. The loop moves on.
-                                # ...the agent builds it, one task at a time
-leo scan                        # split the diff into hunks
-                                # ...the agent fills in Task / Why / If deleted
-leo use serena                  # the agent says which tool it is using, and logs it
-leo check                       # rules, hunks, tools, TDD, budget, tests
-leo record "api: rate limit"    # the cycle's message, filed. Nothing in git yet.
-                                # ...repeat cycle one for the next part
-leo commit                      # you run this one. It refuses without a tty,
-                                # and lands every record as one commit.
-
-# then, in a NEW session — cycle two, which the commit above asks for
-leo session --mode review
-leo review                      # briefed from the commit cycle one just wrote
-                                # ...the agent files findings against
-                                #    CODE_REVIEW.md. It cannot edit code.
-leo review --close              # yours too. No open blocker, and a real verdict.
+npm install -g leo-workflow@0.8.2
 ```
-
-## Picking up a change days later
-
-Nothing lives in the chat, so a dropped connection, a closed laptop or a week
-away costs nothing:
-
-```sh
-cat SESSION.md         # where the session was, written by the command that
-                       # ended it — including the one that failed
-leo plan               # the plan, plus "2 of 5 done, 1 later | next: T3"
-leo plan --list        # every plan in the repository, and which is in flight
-leo defer --list       # what was put off, and why
-git diff HEAD          # the code you already wrote, still sitting there
-cat .leo/manifest.md   # the review table, as far as it got
-```
-
-`SESSION.md` is rewritten on the way out of **every** leo command — success,
-failure, refusal or interrupt. It is the one file that is still true after a
-session drops, because the command that dropped it wrote the file on its way
-down.
-
-The Status column in the plan is the whole memory of a long change, and
-`later` is a status: a task you cannot do yet is neither done nor deleted.
-
-`.leo/plans/` is **tracked** — a plan is the reasoning behind a change and
-outlives it. The rest of `.leo/` is gitignored, because every one of those
-files ends up inside the commit message it describes.
-
-## Layout
-
-```
-leo                dispatch: a command is a file in src/cmd/, no registry
-src/lib/*.js       every shared fact, one file per concern
-src/cmd/*.js       one file per command, readable top to bottom
-src/integrations/  the tools leo ships with: detect, hint, install, advise
-templates/         what `leo init` copies into a repository
-.claude/           a Claude Code front door for cycle two: a `/review` command
-                   and a read-only reviewer subagent. Copy them into your own
-                   repo or ignore them — leo itself is agent-agnostic, and
-                   nothing in `core/` knows they exist.
-```
-
-## Extending it
-
-There are exactly three extension points, and none requires touching the code:
-
-- **A new check** is a new file in `.leo/rules/`.
-- **A new command** is a new file in `src/cmd/`. `leo <name>` finds it.
-- **A new tool** is a new file in `.leo/integrations/`, committed with your
-  repo, defining two required functions — is it installed, how do you install
-  it — and up to four optional ones. `leo session --<name> on` and
-  `leo install <name>` then work for it. leo parses an adapter before it loads
-  it and skips one that does not compile, because nothing a repository adds may
-  be able to break `leo check`.
-
-If a change needs more machinery than that, it probably does not belong here.
-Every abstraction in this tool has to earn itself against a simple rule: you
-must be able to read the whole thing in one sitting.
-
-## Using it, day to day
-
-Two cycles, and the command for each stage:
-
-```
-CYCLE ONE  grill -> plan -> task -> subtask -> build -> manifest -> record
-           (any task or subtask can go to `later` instead, with a reason)
-           ...once per part of the change. Then, once: commit
-CYCLE TWO  brief -> read -> findings -> close        (a new session, after the commit)
-```
-
-```sh
-# 1. grill — say "grill me on this, then plan it". No cap on questions or
-#    rounds; it ends when you and the agent share the same understanding.
-# 2. plan
-leo plan "rate limiting"           # then fill in goal, non-goals, tasks, budget
-
-# 3. task — one file per plan row, carrying that task's grill
-leo task T1
-leo task                           # every task, its to-do, its status
-
-# 4. subtask — when a task turns out to hold more than one decision
-leo task T1 --sub "in-memory store"   # a heading inside T1.md, not a new file
-
-# 5. build — the agent writes the code, one task at a time
-
-# 6. manifest
-leo scan                           # diff -> one row per hunk
-leo check                          # rules, hunks, grill, tools, TDD, budget, tests
-leo check --verbose                # ...showing every stage
-leo use --list                     # which tools built these hunks
-
-# 7. record — the agent may run this. It writes no history.
-leo record "api: cap each key at 60 requests per minute"
-leo commit --list                  # the cycles recorded and not yet in git
-
-#    Then go back to 1 for the next part. Nothing is in git until:
-
-# 8. commit — yours, never the agent's. One commit, every record in it.
-leo commit                         # or: leo commit "api: per-key rate limiting"
-```
-
-Then cycle two, which `leo commit` asks for:
-
-```sh
-# 9. brief — a new session, and a review of the commit that just landed
-leo session --mode review
-leo review                         # or: leo review <sha>, leo review main..HEAD
-
-# 10. read — the diff against CODE_REVIEW.md, briefed with what
-#    cycle one recorded: goal, manifest, non-goals, and what the grill settled
-
-# 11. findings — one row each: severity, where, what breaks, status
-
-# 12. close — yours, like the commit
-leo review --close
-```
-
-Then **start a fresh session for the next task.** The record is the stopping
-point, not the commit — an agent re-reads its whole context every turn, so a
-session's cost grows with the square of its length, and holding one session
-open across every cycle of a change is the worst shape available.
-`.leo/tasks/` and `.leo/commits/` exist so stopping costs you nothing.
-
-Four things block in cycle one: a hunk with no task, a task with no grill, a
-tool switch and the ledger disagreeing, and — while TDD is on — code that
-arrived without a test ever being watched to fail. One blocks in cycle two: a
-`blocker` finding nobody has fixed or waived. Everything else is a working
-note.
-
-## Vendoring it into your repo
-
-Rather than symlinking one clone into every project, build a single
-self-contained file and commit it:
-
-```sh
-git clone https://github.com/pranesh27-leo/Leo-workflow.git ~/leo
-cd ~/leo && ./leo build              # -> dist/leo, one file, no siblings
-cp dist/leo ~/work/myrepo/.leo/bin/leo
-cd ~/work/myrepo && git add -f .leo/bin/leo
-```
-
-Everyone who clones your repo now runs the same leo, pinned to the revision
-its header names. It is still bash and still carries every comment, so it can
-be reviewed like anything else you commit.
-
-## Requirements
-
-git and node 14. No dependencies, no network.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pranesh Kumar.
+MIT.
+
+`grilling` is **not leo's**. It is Matt Pocock's, copied byte-for-byte from
+[mattpocock/skills](https://github.com/mattpocock/skills) under the MIT
+licence in `.agents/skills/LICENSE`, which is his and travels with the copy.
+It is vendored rather than referenced because the grill is the first stage of
+the loop, and a stage whose definition lives on someone else's default branch
+is a stage that can change under you between two sessions.
+
+`grill-me` is **adapted** from his, under the same licence. His version says
+to call Claude Code's Skill tool; this one names the file to read, so a
+runtime without that mechanism can follow it too. The change is the pointer
+and nothing else.
