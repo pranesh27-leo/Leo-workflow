@@ -40,9 +40,26 @@ const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer'];
 // reader guessing which terms applied to what.
 const LICENSED = ['grill-me', 'ponytail', 'humanizer'];
 
+// The three repository documents land at the root, beside AGENTS.md, because
+// that is where a human looks for them. They ship as placeholders to be
+// filled in: an empty ARCHITECTURE.md is a prompt, and a missing one is a
+// dangling reference from AGENTS.md.
+const DOCS = ['CONTEXT.md', 'ARCHITECTURE.md', 'RULES.md'];
+
+// The work-product templates stay under .agents/templates/ and are copied by
+// the AGENT when it reaches that stage -- never by init. Shipping a
+// pre-made .agents/plan.md would be shipping half a change.
+const TEMPLATES = ['plan.md', 'task.md', 'manifest.md', 'review.md'];
+
 function plan() {
   const out = [['AGENTS.md', 'AGENTS.md']];
   out.push(['leo.md', path.join('.agents', 'leo.md')]);
+  for (const d of DOCS) {
+    out.push([path.join('templates', d), d]);
+  }
+  for (const t of TEMPLATES) {
+    out.push([path.join('templates', t), path.join('.agents', 'templates', t)]);
+  }
   for (const t of ['graph', 'rtk']) {
     out.push([path.join('tools', t + '.md'), path.join('.agents', 'tools', t + '.md')]);
   }

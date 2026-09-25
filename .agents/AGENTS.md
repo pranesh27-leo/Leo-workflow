@@ -14,7 +14,11 @@ a default.
 
 1. Read the block above. **Name the mode and the stage in your first line.
    Every reply.**
-2. Open `.agents/leo.md`, find your stage, do that stage, stop there.
+2. **Name every skill and tool you are using, as you use it.** "Using
+   ponytail." "Running `codebase-memory-mcp cli trace_path`." Before the
+   work, not after — what the developer sees and what you actually did must
+   be the same thing, and they cannot check the second.
+3. Open `.agents/leo.md`, find your stage, do that stage, stop there.
 
 Cannot read these files? Say so and stop. Never guess the stage.
 
@@ -50,6 +54,32 @@ are the developer's, not yours.
 | close | — | the verdict — **they sign it** |
 
 **What each stage means, and exactly what to write: `.agents/leo.md`.**
+
+## Where the work is stored
+
+| what | where | copy it from |
+|---|---|---|
+| the plan | `.agents/plan.md` | `.agents/templates/plan.md` |
+| a task | `.agents/tasks/T1.md` | `.agents/templates/task.md` |
+| a subtask | a `## T1.1` heading inside its parent task | — |
+| the manifest | `.agents/manifest.md` | `.agents/templates/manifest.md` |
+| a review | `.agents/reviews/<sha>.md` | `.agents/templates/review.md` |
+
+None of these exist until you write them. Copy the template, fill it in, do
+not invent a different shape — the templates are what the next session and
+cycle two both expect to read.
+
+## The repository's own documents
+
+| file | answers | when |
+|---|---|---|
+| `CONTEXT.md` | what this project is | before your first task here |
+| `ARCHITECTURE.md` | how the pieces fit, and where a change goes | before you write code |
+| `RULES.md` | what broke before, and what not to repeat | before you write code |
+
+Read on demand, not on every request. If one is still all placeholders, say
+so — an unfilled document is a question nobody answered, and guessing at the
+answer is how the same mistake gets made twice.
 
 ## Skills
 
@@ -98,5 +128,6 @@ file and let them decide.
 | invent a task ID | write `-` in the manifest and say it served no task |
 | skip a stage quietly | name the stage you skipped, then wait |
 | change `Mode:` or `TDD:` | ask them to |
+| use a skill or tool silently | name it in the reply that uses it |
 
 After a commit, tell them to start a **fresh session**.

@@ -23,7 +23,9 @@ runs during your work, nothing watches, nothing to keep installed.
 | `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
-| `.claude/skills/*/` | the same five, where Claude Code reads them |
+| `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
+| `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
+| `.claude/skills/*/` | the same five skills, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
@@ -34,6 +36,10 @@ TDD:  yes           <- yes | no
 
 The mode picks which skills apply. `TDD` picks which build stages the agent
 follows. Both are yours to set, and the agent is told never to change them.
+
+It is also told to **name every skill and tool as it uses them** — a skill
+you can see being used is one you can object to, and one used silently is
+indistinguishable from one not used at all.
 
 ## The loop
 
@@ -102,18 +108,6 @@ Windows. Missing one is not an error.
 | [rtk](https://github.com/rtk-ai/rtk) | filters shell output structurally | `brew install rtk` · `winget install rtk-ai.rtk` |
 
 The agent is told never to install them — it shows you the command.
-
-## Upgrading from 0.x
-
-1.0.0 is a different tool with the same name. If you were using the CLI,
-`leo scan`, `leo check`, `leo record`, `leo commit`, `leo review`,
-`leo plan`, `leo task` and `leo defer` no longer exist, and neither does
-`SESSION.md` or `.leo/`. The last CLI release is tagged `v0.8.2` and stays
-installable:
-
-```sh
-npm install -g leo-workflow@0.8.2
-```
 
 ## Licence
 

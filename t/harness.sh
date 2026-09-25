@@ -52,6 +52,26 @@ for f in AGENTS.md \
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
 done
 
+# The templates, and the three repository documents. A stage that says "copy
+# the template" and no template is a dangling instruction -- the exact
+# failure the pointer check below exists for, arriving through the copier
+# instead of through the prose.
+for f in .agents/templates/plan.md \
+         .agents/templates/task.md \
+         .agents/templates/manifest.md \
+         .agents/templates/review.md \
+         CONTEXT.md ARCHITECTURE.md RULES.md; do
+  [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
+done
+
+# The templates are instructions; the files they produce are work. Shipping
+# a filled-in .agents/plan.md would be shipping half a change, and the
+# pointer check below asserts the same thing from the other side.
+for f in .agents/plan.md .agents/manifest.md; do
+  [ -e "$f" ] && bad "init pre-made $f — that is the agent's to write" \
+               || ok "init does not pre-make $f"
+done
+
 # Vendored work travels with its own licence, in its own directory. One
 # LICENSE at the top for five skills from three authors leaves a reader
 # guessing which terms cover what.
@@ -151,6 +171,22 @@ for tool in graph rtk; do
     && ok "AGENTS.md names the $tool tool" \
     || bad "$tool ships but AGENTS.md never mentions it"
 done
+
+# Every template the documents tell the agent to copy must be a file the
+# copier ships. This is the same dangling-pointer failure as a missing skill,
+# one indirection further along.
+for t in plan task manifest review; do
+  grep -q "templates/$t.md" "$R/.agents/leo.md" \
+    && ok "leo.md points at the $t template" \
+    || bad "leo.md never tells the agent where to get the $t template"
+done
+
+# Announcing what is in use. The whole switch mechanism rests on it: a skill
+# the developer can see being used is one they can object to, and one used
+# silently is indistinguishable from one not used at all.
+grep -qi 'name every skill and tool' "$R/AGENTS.md" \
+  && ok "AGENTS.md requires naming the skills and tools in use" \
+  || bad "nothing tells the agent to announce what it is using"
 
 # Both halves of the TDD switch must exist, or the block at the top of
 # AGENTS.md asks a question whose answer changes nothing.

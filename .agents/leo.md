@@ -54,32 +54,9 @@ Write what it settled into that task's `## Grill`. A deferred subtask is
 `git log --oneline -20` first: what this repository has been doing lately is
 context for what it should do next.
 
-Write `.agents/plan.md`:
-
-```markdown
-# Plan: <name>
-
-## Goal
-<One sentence: what changes, and why.>
-
-## Non-goals
-<What this change does not touch. This is what stops scope creep.>
-
-## Wrong-change signal
-<The one observation that would mean this is the wrong change entirely.>
-
-## Tasks
-
-| #  | Task   | Files   | Est LOC | Status  |
-|----|--------|---------|---------|---------|
-| T1 | <task> | <files> | <n>     | pending |
-
-## Later
-<!-- One line per deferred task, with its reason. -->
-
-## Budget
-est: <n> LOC
-```
+Copy `.agents/templates/plan.md` to `.agents/plan.md` and fill it in. The
+template carries the sections and what each is for; it is the only copy, so
+it cannot drift from what this file says.
 
 A new goal is a new plan. Task ids **never restart**: if the last plan ended
 at T7 the next starts at T8, so `T8` names one task in this repository
@@ -87,23 +64,11 @@ forever. Status is `pending` → `in-progress` → `done`, or `later`.
 
 ### 3. task
 
-Write `.agents/tasks/T1.md`:
+Copy `.agents/templates/task.md` to `.agents/tasks/T1.md` and fill it in.
 
-```markdown
-# T1 — <name>
-
-Files: <files>
-Est:   <n> LOC
-
-## Done when
-<The observable condition. Write this first; everything else follows from it.>
-
-## Grill
-<!-- What the grill settled. Empty means it was never grilled. -->
-
-## To-do
-- [ ] <step>
-```
+Write **Done when** first. It is an observable condition, and both the test
+and the to-do fall out of it — "it works" is not one, "POST /x returns 429
+after 10 requests in 60s" is.
 
 ### 4. subtask
 
@@ -154,18 +119,8 @@ git status --short       # anything new that the diff does not show
 git diff --stat          # the line count, for the budget row
 ```
 
-Write `.agents/manifest.md`:
-
-```markdown
-# Manifest
-
-| # | Hunk | Delta | Task | Why | If deleted |
-|---|------|-------|------|-----|------------|
-| 1 | `src/api.js:42` | +12/-3 | T1 | rate limit needs a window | requests are unbounded |
-
-Budget: est <n> LOC / actual <n> LOC
-Tests: `<command>` -- <paste the real output>
-```
+Copy `.agents/templates/manifest.md` to `.agents/manifest.md` and fill it
+from what those commands printed.
 
 One row per hunk. Every row needs all three of Task, Why and If deleted.
 
@@ -237,17 +192,8 @@ finding.
 `git show -U0 <sha>` — hunks without context, the same view the manifest was
 built from.
 
-Write `.agents/reviews/<sha>.md`:
-
-```markdown
-# Review: <sha> — <subject>
-
-| # | Severity | Finding | Where | Status |
-|---|----------|---------|-------|--------|
-| 1 | blocker  | <what>  | `f:42`| open   |
-
-Verdict: <ship | fix-first> — <why>
-```
+Copy `.agents/templates/review.md` to `.agents/reviews/<sha>.md` and fill it
+in.
 
 Severity is `blocker`, `improvement` or `nit`. Status is `open`, `fixed` or
 `waived`. Those six words are the whole vocabulary; anything else is a
