@@ -109,19 +109,29 @@ function run(ctx) {
     put(s, path.join('.leo', s));
   }
 
-  // ...and again, where the agent's runtime will actually find them.
+  // ...and again, where an agent's runtime will actually find them.
   //
   // This is the bug that made the whole thing worth fixing: leo vendored the
   // grill into .leo/skills/, no runtime reads that path, and the skill
   // shipped doing nothing for anyone who did not wire it up by hand.
-  // .leo/skills/ stays the canonical copy and this is the working one.
+  // .leo/skills/ stays the canonical copy and these are the working ones.
   //
-  // Claude Code only, and leo says so rather than guessing. Cursor, Codex and
-  // Aider each have their own convention; inventing three more paths from
-  // memory is how you get three more dangling pointers instead of one.
-  for (const s of ['grilling', 'grill-me']) {
-    if (!ctx.assets.tmplHas('skills/' + s + '/SKILL.md')) continue;
-    put('skills/' + s + '/SKILL.md', path.join('.claude', 'skills', s, 'SKILL.md'));
+  // Two conventions, not one. `.claude/skills/` is Claude Code's;
+  // `.agents/skills/` is the cross-tool convention that grew up around
+  // AGENTS.md and is what a runtime with no convention of its own should be
+  // pointed at. Both are cheap -- a SKILL.md is a few hundred bytes -- and
+  // the grill itself is runtime-agnostic prose, so neither copy says
+  // anything that is only true for one tool.
+  //
+  // Anything beyond these two is still a guess. A path invented from memory
+  // is a dangling pointer, which is the failure this whole block exists to
+  // fix, so leo installs where it knows and `AGENTS.md` names the canonical
+  // path for everyone else.
+  for (const runtime of [['.claude', 'skills'], ['.agents', 'skills']]) {
+    for (const s of ['grilling', 'grill-me']) {
+      if (!ctx.assets.tmplHas('skills/' + s + '/SKILL.md')) continue;
+      put('skills/' + s + '/SKILL.md', path.join(runtime[0], runtime[1], s, 'SKILL.md'));
+    }
   }
 
   if (!fs.existsSync('.leo/config') || force) {

@@ -257,7 +257,36 @@ function capSignature(ctx, adapters) {
   for (const c of capsList(adapters)) {
     s += ' ' + c + '=' + capState(ctx, adapters, c) + '/' + capPresent(ctx, adapters, c);
   }
+  // The skills, by name and size. The block points the agent at
+  // `.leo/skills/grilling/SKILL.md`, so a skill that was added, removed or
+  // edited changes what that pointer leads to -- and a block still claiming
+  // to describe the session would be describing a different one.
+  //
+  // Size rather than content: this runs on every command that touches the
+  // fingerprint, and hashing every skill to notice an edit nobody made is a
+  // cost paid constantly for an event that is rare. A skill that changes
+  // without changing length is the miss, and it is a far smaller one than
+  // not noticing a skill appearing or disappearing at all.
+  for (const sk of skillsSignature(ctx)) s += ' ' + sk;
   return s + '\n';
+}
+
+// skillsSignature — `<name>:<bytes>` for every vendored skill, sorted.
+function skillsSignature(ctx) {
+  const out = [];
+  if (!ctx.root) return out;
+  const dir = path.join(ctx.root, '.leo', 'skills');
+  if (!isDir(dir)) return out;
+  let names;
+  try { names = fs.readdirSync(dir).sort(); } catch (e) { return out; }
+  for (const n of names) {
+    const f = path.join(dir, n, 'SKILL.md');
+    try {
+      const st = fs.statSync(f);
+      if (st.isFile()) out.push('skill:' + n + '=' + st.size);
+    } catch (e) { /* not a skill directory */ }
+  }
+  return out;
 }
 
 // capFingerprint — capSignature, short enough to sit in a comment.
@@ -307,5 +336,5 @@ module.exports = {
   capOver, capState, capPresent, capKind, capLabel, capCall,
   capOneline, capMcp,
   usedHas, usedLog, usedNote, usedList,
-  capSignature, capFingerprint, cksum,
+  capSignature, capFingerprint, cksum, skillsSignature,
 };

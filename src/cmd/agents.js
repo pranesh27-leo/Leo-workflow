@@ -39,46 +39,42 @@ function block(ctx, adapters, fp) {
     return out.join('\n') + '\n';
   }
 
-  w('Mode **' + ctx.mode + '**. Announce every one of these with `leo use <name>`');
-  w('before you use it — that is the line the developer sees and the line');
-  w('`leo check` reads, and they cannot drift apart.');
-  w('');
-  w('| Tool | State | How leo sees it | The one thing to know |');
-  w('|---|---|---|---|');
-
+  // Names and pointers, not a table.
+  //
+  // This block used to be a four-column table with a row per capability: 19
+  // lines, in the one file that is re-read on every request of every session
+  // forever. It pushed a fresh AGENTS.md to 81 lines against its own 70-line
+  // budget, and every one of those lines was a restatement of something
+  // already written down in `.leo/tools/<name>.md`.
+  //
+  // So this says which tools are on, which are off, and where the detail
+  // lives. The agent needs the switch positions on every request; it needs
+  // the instructions only when it is about to use one, and that is a file
+  // read away.
   const list = caps.capsList(adapters);
-  let any = false;
+  const on = [], off = [], missing = [];
   for (const c of list) {
-    const st = caps.capState(ctx, adapters, c);
-    const rc = caps.capPresent(ctx, adapters, c);
-    const lb = caps.capLabel(adapters, c);
-    const kd = caps.capKind(adapters, c);
-
-    let how, note;
-    if (st === 'on' && rc === 1) {
-      how = 'not installed';
-      note = 'tell the developer: `leo install ' + c + '`. Do not install it.';
-    } else if (st === 'on') {
-      if (kd === 'invoked') how = '`leo use ' + c + '`';
-      else if (kd === 'practice') how = '`leo check` gates it';
-      else how = 'ambient — no announcement';
-      note = caps.capOneline(adapters, c, ctx);
-      const m = caps.capMcp(adapters, c);
-      if (m) note += '  MCP: ' + m;
-      const doc = '.leo/tools/' + c + '.md';
-      if (isFile(path.join(ctx.root, doc))) note += '  (' + doc + ')';
+    const label = caps.capLabel(adapters, c);
+    if (caps.capState(ctx, adapters, c) === 'on') {
+      on.push(label);
+      if (caps.capPresent(ctx, adapters, c) === 1) missing.push(c);
     } else {
-      how = 'OFF';
-      note = 'do not use it. `leo use ' + c + '` refuses and records the attempt.';
+      off.push(label);
     }
-    any = true;
-    w('| ' + lb + ' | ' + st + ' | ' + how + ' | ' + note + ' |');
   }
-  if (!any) w('| — | — | — | leo knows no tools here |');
 
+  // Facts that change, and nowhere else to find them. The rules for USING a
+  // tool -- announce it, never install it, OFF is the developer's -- are
+  // standing orders in the template above and do not change per session, so
+  // restating them here would be paying for them twice on every request.
+  w('Mode **' + ctx.mode + '**. ON: ' + (on.length ? on.join(', ') : 'nothing') + '.');
+  w('OFF: ' + (off.length ? off.join(', ') : 'nothing') + '.');
+  if (missing.length) {
+    w('Not installed: ' + missing.join(', ') + ' — tell them `leo install <name>`.');
+  }
   w('');
-  w("OFF is the developer's decision, not a default to work around.");
-  w('A tool that is ON, installed and never announced fails `leo check`.');
+  w('Read on demand, never import here: a tool is `.leo/tools/<name>.md`, the');
+  w('loop is `.leo/workflow.md`, the grill is `.leo/skills/grilling/SKILL.md`.');
   w('');
   w(END);
   return out.join('\n') + '\n';

@@ -155,9 +155,12 @@ FILES
                           edit it; it is overwritten on the next command.
   .leo/manifest.md        current scope table (same)
   .leo/used               which declared tools built this cycle's hunks (same)
-  .claude/skills/*/       the vendored skills, installed where Claude Code
-                          actually reads them. TRACKED: a skill that only
-                          works for whoever last ran \`leo init\` is no skill.
+  .leo/skills/*/          the vendored skills, canonical copy. Point a runtime
+                          leo does not know about at this path.
+  .claude/skills/*/       the same skills where Claude Code reads them
+  .agents/skills/*/       ...and where the cross-tool convention reads them.
+                          TRACKED: a skill that only works for whoever last
+                          ran \`leo init\` is no skill.
   .leo/commits/*.md       one per cycle recorded but not yet landed. Gitignored
                           for the same reason as the rest: each one ends up
                           inside the commit message it describes.

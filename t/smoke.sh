@@ -894,12 +894,29 @@ mkdir -p "$SK" && cd "$SK"
 git init -q . && git config user.email t@t && git config user.name t
 echo one > f.txt && git add -A && git commit -qm init >/dev/null 2>&1
 NO_COLOR=1 "$LEO" init >/dev/null 2>&1
-[ -f .claude/skills/grilling/SKILL.md ] && ok "init installs the grill where Claude Code reads it" \
-                                        || bad "init installs the grill where Claude Code reads it"
-[ -f .claude/skills/grill-me/SKILL.md ] && ok "init installs grill-me where Claude Code reads it" \
-                                        || bad "init installs grill-me where Claude Code reads it"
+# Two runtime conventions, not one. `.claude/skills/` is Claude Code's;
+# `.agents/skills/` is the cross-tool one that grew up around AGENTS.md. A
+# grill that only works in one vendor's harness is the same bug the vendoring
+# was meant to fix, one level along.
+for d in .claude .agents; do
+  [ -f "$d/skills/grilling/SKILL.md" ] && ok "init installs the grill into $d/skills" \
+                                       || bad "init installs the grill into $d/skills"
+  [ -f "$d/skills/grill-me/SKILL.md" ] && ok "init installs grill-me into $d/skills" \
+                                      || bad "init installs grill-me into $d/skills"
+done
 [ -f .leo/skills/grilling/SKILL.md ] && ok "the canonical copy stays under .leo/skills" \
                                      || bad "the canonical copy stays under .leo/skills"
+
+# grill-me is leo's own trigger shim, unlike grilling which is vendored. It
+# must not name one vendor's mechanism: "call the Skill tool" is a Claude Code
+# instruction, and an agent without that tool reads it and has nothing to do.
+gm=$(cat .leo/skills/grill-me/SKILL.md)
+printf '%s' "$gm" | grep -qi 'skill tool' \
+  && bad "grill-me names Claude Code's Skill tool — it is not generic" \
+  || ok "grill-me names no vendor's mechanism"
+printf '%s' "$gm" | grep -q '\.leo/skills/grilling/SKILL\.md' \
+  && ok "grill-me points at the canonical grill by path" \
+  || bad "grill-me does not name the file it delegates to"
 # Tracked, not ignored: a skill that only works for whoever last ran init is
 # the same bug one level down.
 git add -A >/dev/null 2>&1
@@ -1210,8 +1227,17 @@ has "$a" "CONTEXT"  "AGENTS.md points at CONTEXT.md"
 # new plan. Both are decisions the agent makes before it would have any reason
 # to open the file that explains them, which is the test for earning a place
 # in this file at all.
+# Measured WITH the generated tools block in place, because that is the file
+# an agent actually reads. Measuring the bare template passed for a while
+# against an installed file 11 lines over -- the block is generated, so it is
+# exactly the part nobody looks at when they trim.
+NO_COLOR=1 "$LEO" session --mode coding >/dev/null 2>&1
+NO_COLOR=1 "$LEO" agents --auto >/dev/null 2>&1
+grep -q 'leo:tools begin fingerprint=[0-9]' AGENTS.md \
+  && ok "the budget is measured with the tools block written" \
+  || bad "the tools block was not written — the budget below means nothing"
 n=$(wc -l < AGENTS.md | tr -d ' ')
-[ "$n" -le 70 ] && ok "AGENTS.md is $n lines (<= 70)" \
+[ "$n" -le 70 ] && ok "AGENTS.md is $n lines (<= 70), block included" \
                 || bad "AGENTS.md is $n lines, over the 70-line budget"
 cd "$TMP/repo"
 

@@ -1,7 +1,7 @@
 # Working agreement
 
-Instruction, not description. What this repo *is* is in `CONTEXT.md`; how it
-is built is `ARCHITECTURE.md`; what is enforced is `RULES.md`.
+Instruction, not description. This repo is `CONTEXT.md`; how it is built is
+`ARCHITECTURE.md`; what is enforced is `RULES.md`.
 
 ## Before anything
 
@@ -9,39 +9,40 @@ is built is `ARCHITECTURE.md`; what is enforced is `RULES.md`.
 2. **Name that stage in your first line. Every reply.**
 3. Do that stage. Stop there.
 
-If it reports the tools block below as STALE or missing, fix that first:
-`leo agents --ask`, put the question to the developer, then `leo agents
---auto`. Never decide for them which tools are on.
-
-Cannot run commands? Say so and stop. Never guess the stage.
+Tools block below STALE or missing? Fix that first: `leo agents --ask`, put
+the question to them, then `leo agents --auto`. Never decide which tools are
+on. Cannot run commands? Say so and stop — never guess the stage.
 
 ## The loop
 
-    1  grill -> plan -> task -> subtask -> build -> manifest -> record
-       leo plan  leo task  --sub   write   leo scan+check  leo record
-       repeat 1 per part; nothing is in git until  leo commit <- theirs
-    2  brief -> read -> findings -> close        <- after a commit, NEW session
-       leo review <sha>              leo review --close <- theirs
+**Cycle one — build it.** Every stage, in order, one task at a time.
 
-Never skip a stage. Asked for one two ahead — code with no plan, a record with
-no manifest — name the skipped stage and its command, then wait. Never quietly.
+    grill     interview them until it is settled; write it into `## Grill`
+    plan      leo plan "<name>"           opens P1, then P2, P3, …
+    task      leo task T1                 a file and a to-do per task
+    subtask   leo task T1 --sub "<name>"  a heading inside T1.md
+    build     write the code for that one task
+    manifest  leo scan, fill every row, then leo check
+    record    leo record "<subject>"      nothing reaches git
+    commit    leo commit                  <- theirs, not yours
 
-A new goal is a new plan: `leo plan "<it>"` opens P2, P3, … Task ids never
-restart. Cannot do a task yet? `leo defer T3 "<why>"` — the loop steps over it.
-Never mark it done, never delete it.
+**Cycle two — read it.** After a commit, in a NEW session. Cannot edit code.
 
-Cycle two reads a commit and **cannot edit it**. Want to change a line? That
-is a finding; the fix is a new cycle one.
+    brief     leo review <sha>            briefed from the commit itself
+    findings  fill the table in .leo/reviews/<sha>.md
+    close     leo review --close          <- theirs, not yours
+
+Asked for a stage two ahead — code with no plan, a record with no manifest —
+name the skipped stage and its command, then wait. Never quietly. A new goal
+is a new plan; task ids never restart. Cannot do a task yet? `leo defer T3
+"<why>"` steps over it: never mark it done, never delete it.
 
 ## Grill before every task
 
-Once per **task**, once per **subtask**, not once per change. Interview the
-developer until the decisions are settled; write them into `## Grill`. A
-deferred subtask is not grilled — that is what deferring it means.
-
-`.leo/skills/grilling/SKILL.md` defines how. Follow it; invent nothing. No cap
-on questions or rounds — stop when the developer confirms, never at a count.
-Zero is not a grill: `leo check` fails on `leo:ungrilled`.
+Once per **task**, once per **subtask**, not once per change. A deferred
+subtask is not grilled — that is what deferring it means. No cap on questions;
+stop when they confirm, never at a count. Zero is not a grill: `leo check`
+fails on `leo:ungrilled`.
 
 ## Standing orders
 
@@ -51,10 +52,8 @@ Zero is not a grill: `leo check` fails on `leo:ungrilled`.
 - **Never invent a task ID** to justify a hunk.
 - The session mode is the developer's. Honour it; never change it.
 
-After you record, tell them to start a **fresh session**.
-
-Full stages: `.leo/workflow.md` — read on demand, never import it here.
-`SESSION.md` is rewritten on every command; read it after a disconnect.
+After you record, tell them to start a **fresh session**. `SESSION.md` is
+rewritten on every command; read it after a disconnect.
 
 <!-- leo:tools begin fingerprint=none -->
 <!-- `leo agents --auto` writes this. Until it runs you know nothing about

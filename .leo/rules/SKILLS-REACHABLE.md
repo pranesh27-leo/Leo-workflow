@@ -5,7 +5,7 @@ MUST: every skill under `templates/skills/<name>/SKILL.md` is installed by
 
 `.leo/skills/` is the canonical copy — vendored, unmodified, and the thing a
 team amends. It is not a path any agent runtime loads. Claude Code reads
-`.claude/skills/`, so that is where `init` puts the working copy, and the two
+`.claude/skills/` and `.agents/skills/`, so that is where `init` puts the working copies, and the
 must stay in step.
 
 Learned from shipping exactly this bug. leo vendored the grill into

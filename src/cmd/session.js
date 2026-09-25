@@ -244,19 +244,29 @@ function run(ctx) {
   group('practice', ['tdd']);
   group('extensions', extra);
 
-  // Which runtime the vendored skills are wired for. leo installs them into
-  // .claude/skills/ and does not guess at Cursor's or Codex's conventions, so
-  // a team on something else can see at a glance that this part is not for
-  // them. Printed rather than inferred: a skill nobody can see is the bug
-  // this whole section exists because of.
-  const skillsDir = path.join(ctx.root, '.claude', 'skills');
-  if (isDir(skillsDir)) {
-    const sk = fs.readdirSync(skillsDir)
-      .filter((d) => isFile(path.join(skillsDir, d, 'SKILL.md')));
-    if (sk.length) {
-      head_('skills');
-      info('  ' + sk.join(', ').padEnd(13) + ' wired for Claude Code (.claude/skills/)');
+  // Where the vendored skills are wired, printed rather than inferred: a
+  // skill nobody can see is the bug this whole section exists because of.
+  //
+  // Both conventions are listed, and named, so a team on a runtime that
+  // reads neither can see at a glance that this part is not wired for them
+  // -- and knows the canonical copy under .leo/skills/ is still there to
+  // point their own harness at.
+  const runtimes = [
+    ['.claude/skills/', path.join(ctx.root, '.claude', 'skills')],
+    ['.agents/skills/', path.join(ctx.root, '.agents', 'skills')],
+  ];
+  const wired = [];
+  for (const [label, dir] of runtimes) {
+    if (!isDir(dir)) continue;
+    const sk = fs.readdirSync(dir).filter((d) => isFile(path.join(dir, d, 'SKILL.md')));
+    if (sk.length) wired.push([label, sk]);
+  }
+  if (wired.length) {
+    head_('skills');
+    for (const [label, sk] of wired) {
+      info('  ' + sk.join(', ').padEnd(13) + ' wired at ' + label);
     }
+    info('  ' + 'canonical'.padEnd(13) + ' .leo/skills/ — point any other runtime here');
   }
 
   // Always on, in every mode, and not settable from here. That is the point
