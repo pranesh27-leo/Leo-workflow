@@ -184,10 +184,6 @@ done
 # Announcing what is in use. The whole switch mechanism rests on it: a skill
 # the developer can see being used is one they can object to, and one used
 # silently is indistinguishable from one not used at all.
-grep -qi 'name every skill and tool' "$R/AGENTS.md" \
-  && ok "AGENTS.md requires naming the skills and tools in use" \
-  || bad "nothing tells the agent to announce what it is using"
-
 # Both halves of the TDD switch must exist, or the block at the top of
 # AGENTS.md asks a question whose answer changes nothing.
 grep -q 'TDD:' "$R/AGENTS.md" \
@@ -221,6 +217,25 @@ for forbidden in commit install; do
     && ok "standing orders forbid $forbidden" \
     || bad "standing orders have no row forbidding $forbidden"
 done
+
+# The standing-order ROW, not a sentence in the prose. The prose gets
+# reworded; the row is structural, and it is the same anchor the commit and
+# install prohibitions use. A test tied to a phrase fails on a rewrite that
+# strengthened the rule, which is what this one did.
+printf '%s' "$orders" | grep -qE "^\| *use a skill or tool silently *\|" \
+  && ok "standing orders forbid using a skill or tool silently" \
+  || bad "nothing forbids using a skill or tool silently"
+
+# And the per-reply framing: the rules have to be in force on every request,
+# not read once at the start of a session. That distinction is the whole
+# difference between a harness and a README.
+# The section HEADING, not the phrase anywhere. "every reply" also appears in
+# the prose below it, so a loose grep passed with the heading rewritten back
+# to a session-start ritual -- reporting a contract that was no longer there.
+grep -qiE '^#+ .*every reply' "$R/AGENTS.md" \
+  && ok "AGENTS.md's protocol is headed as per-reply, not per-session" \
+  || bad "AGENTS.md reads as a session-start ritual, not a per-reply contract"
+
 
 # =========================================================================
 printf '\nthe vendored grill is untouched\n'

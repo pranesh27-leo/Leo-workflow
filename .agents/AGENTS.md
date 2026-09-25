@@ -10,15 +10,29 @@
 If either line is blank, ask for it before you touch anything. Do not assume
 a default.
 
-## Before anything
+## Every reply, without being asked
 
-1. Read the block above. **Name the mode and the stage in your first line.
-   Every reply.**
-2. **Name every skill and tool you are using, as you use it.** "Using
-   ponytail." "Running `codebase-memory-mcp cli trace_path`." Before the
-   work, not after — what the developer sees and what you actually did must
-   be the same thing, and they cannot check the second.
-3. Open `.agents/leo.md`, find your stage, do that stage, stop there.
+This file is loaded on every request. What is in it is therefore in force on
+every request — not at the start of a session, not when the developer
+mentions it, **every time**.
+
+The developer configures `Mode:` and `TDD:` once. After that they never name
+a skill again. "Use ponytail here" is not something they should ever have to
+type: the mode says ponytail is ON, so it is on, for this reply and the next
+one and the one after that.
+
+Four things, in order, on every single reply:
+
+1. **State the mode and the stage.** First line. `[coding · build]`.
+2. **State which skills are in force**, from the table below, and which tools
+   you actually used. `[ponytail · caveman]`. Naming them is not a formality
+   — a skill the developer can see is one they can object to, and one applied
+   silently is indistinguishable from one not applied at all.
+3. **Apply them.** The rules are below, one line each, because a rule you
+   have to open a file to remember is a rule you will forget on a busy turn.
+   The skill file is the authority when you need the method; the line here is
+   enough to act on.
+4. **Do the stage** in `.agents/leo.md`, and stop there.
 
 Cannot read these files? Say so and stop. Never guess the stage.
 
@@ -77,36 +91,44 @@ cycle two both expect to read.
 | `ARCHITECTURE.md` | how the pieces fit, and where a change goes | before you write code |
 | `RULES.md` | what broke before, and what not to repeat | before you write code |
 
-Read on demand, not on every request. If one is still all placeholders, say
-so — an unfilled document is a question nobody answered, and guessing at the
-answer is how the same mistake gets made twice.
+These three are reference, not rules: open one when you need what it holds,
+unlike the skills above which are in force whether or not you open anything.
+If one is still all placeholders, say so — an unfilled document is a question
+nobody answered, and guessing at the answer is how the same mistake gets made
+twice.
 
 ## Skills
 
-| skill | file | what it governs |
-|---|---|---|
-| grill-me | `.agents/skills/grill-me/SKILL.md` | interview before building |
-| tdd | `.agents/skills/tdd/SKILL.md` | test first, and watch it fail |
-| ponytail | `.agents/skills/ponytail/SKILL.md` | what you build — the laziest thing that works |
-| caveman | `.agents/skills/caveman/SKILL.md` | what you say — cut what was not asked for |
-| humanizer | `.agents/skills/humanizer/SKILL.md` | how prose reads — remove AI tells |
+Every one of these is ON or OFF for the mode. There is no third state and
+nothing to invoke: if the table says ON, it applies to this reply.
 
 | mode | grill | tdd | ponytail | caveman | humanizer | graph | rtk |
 |---|---|---|---|---|---|---|---|
-| **coding** | every task + subtask | per `TDD:` | ON | ON | on demand | ON | ON |
-| **debugging** | every task + subtask | per `TDD:` | OFF | OFF | on demand | ON | ON |
+| **coding** | every task + subtask | per `TDD:` | ON | ON | OFF | ON | ON |
+| **debugging** | every task + subtask | per `TDD:` | OFF | OFF | OFF | ON | ON |
 | **learning** | before you build | OFF | OFF | OFF | **ON** | ON | ON |
 | **review** | not used | OFF | OFF | ON | **ON** | ON | ON |
-| **exploration** | before you build | OFF | OFF | OFF | on demand | ON | ON |
+| **exploration** | before you build | OFF | OFF | OFF | OFF | ON | ON |
 
-ON means follow it. OFF means do not — that is the developer's decision, not
-a default to work around. **on demand** means open it when you are writing
-prose worth editing, not on every reply: it is 28 KB and most replies are not
-prose.
+OFF is the developer's decision, not a default to work around. Caveman is OFF
+in debugging and learning because it cuts, and in those modes the line that
+looks like noise is routinely the line that mattered. Ponytail is ON only in
+coding, because it governs code you are writing. Humanizer is ON where the
+output is prose worth editing and OFF where it is mostly diffs.
 
-Caveman is OFF in debugging and learning on purpose — it cuts, and in those
-modes the line that looks like noise is routinely the line that mattered.
-Ponytail is ON only in coding, because it governs code you are writing.
+**What each one means, in force the moment the table says ON:**
+
+| skill | the rule, every reply it is ON | the method |
+|---|---|---|
+| **grill-me** | Interview until the decisions are settled, in rounds, before building. Never build on an assumption you did not put to them. | `.agents/skills/grill-me/SKILL.md` |
+| **tdd** | Write the test, run it, **watch it fail for the reason you expect**, then implement. Report which steps you actually did. | `.agents/skills/tdd/SKILL.md` |
+| **ponytail** | Climb the ladder before writing: does it need to exist, is it already here, does the stdlib do it, can it be one line. Stop at the first rung that holds. | `.agents/skills/ponytail/SKILL.md` |
+| **caveman** | Cut what was not asked for: no preamble, no restating the request, no narrating, no closing offers. Never compress code, output, or bad news. | `.agents/skills/caveman/SKILL.md` |
+| **humanizer** | No staged openers, no not-X-but-Y, no forced triads, no one-line closers, no inflation. Every sentence carries something new. | `.agents/skills/humanizer/SKILL.md` |
+
+The line is enough to act on; the file is the authority when you need the
+method or the edge cases. The line never contradicts the file — if it seems
+to, the file wins and the line is a bug.
 
 ## Tools
 

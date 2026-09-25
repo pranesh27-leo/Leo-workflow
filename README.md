@@ -37,9 +37,16 @@ TDD:  yes           <- yes | no
 The mode picks which skills apply. `TDD` picks which build stages the agent
 follows. Both are yours to set, and the agent is told never to change them.
 
-It is also told to **name every skill and tool as it uses them** — a skill
-you can see being used is one you can object to, and one used silently is
-indistinguishable from one not used at all.
+**You configure this once and then never mention it again.** "Use ponytail
+here" is not something you should have to type: the mode says ponytail is ON,
+so it is on — this reply, the next one, and the one after that. `AGENTS.md`
+is loaded on every request, so what it says is in force on every request, and
+each active skill's rule is written there in one line so it applies without
+the agent stopping to open anything.
+
+The agent names which skills are in force and which tools it used, in every
+reply. A skill you can see being applied is one you can object to; one
+applied silently is indistinguishable from one not applied at all.
 
 ## The loop
 
