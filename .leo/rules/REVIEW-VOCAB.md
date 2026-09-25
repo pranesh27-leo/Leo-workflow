@@ -2,7 +2,7 @@
 
 MUST: `blocker`, `improvement`, `nit`, `open`, `fixed` and `waived` are the
 whole vocabulary of the findings table, and each word appears in all three
-places that depend on it — the code that parses it (`core/cmd/review.sh`), the
+places that depend on it — the code that parses it (`src/cmd/review.js`), the
 rubric that teaches it (`templates/review/STANDARDS.md`), and the template a
 reviewer fills in (`templates/review.md`).
 
@@ -24,18 +24,18 @@ has this failure mode: the check passes because the thing it checks is gone.
 ```sh
 bad=""
 for w in blocker improvement nit; do
-  grep -q "\"$w\""  core/cmd/review.sh              || bad="$bad parser:$w"
+  grep -qE "['\"]$w['\"]" src/cmd/review.js          || bad="$bad parser:$w"
   grep -q "\`$w\`"  templates/review/STANDARDS.md   || bad="$bad standards:$w"
   grep -q "$w"      templates/review.md             || bad="$bad template:$w"
 done
 for w in open fixed waived; do
-  grep -q "\"$w\""  core/cmd/review.sh              || bad="$bad parser:$w"
+  grep -qE "['\"]$w['\"]" src/cmd/review.js          || bad="$bad parser:$w"
   grep -q "$w"      templates/review.md             || bad="$bad template:$w"
 done
 
 # The two the state machine turns on. `review_state` calling these anything
 # else is how a closed review reads as open forever.
-grep -q 'review_count "$1" blocker open' core/lib.sh || bad="$bad lib:blocker-open"
+grep -q "reviewCount(file, 'blocker', 'open')" src/lib/review.js || bad="$bad lib:blocker-open"
 
 [ -z "$bad" ] && exit 0
 echo "review vocabulary drifted:$bad"

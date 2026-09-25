@@ -1,10 +1,19 @@
-#!/usr/bin/env bash
-# desc: show this help
-# usage: leo help
+'use strict';
+// desc: show this help
+// usage: leo help
+//
+// The text is the command surface, and it is the only place that surface is
+// written down -- there is no registry, so this file and `src/cmd/*.js` are
+// kept in step by a rule rather than by a generator.
+//
+// stderr, like every other leo command that is talking rather than answering.
+// `leo help | head` still works because ui.write swallows EPIPE.
 
-cat >&2 <<EOF
+const { info } = require('../lib/ui');
 
-leo $(leo_version) — keep AI-written code reviewable.
+function text(version) {
+  return `
+leo ${version} — keep AI-written code reviewable.
 
 CYCLE ONE — build it
   You    grill the agent, then    leo plan "rate limiting"     <- becomes P1
@@ -109,23 +118,28 @@ COMMANDS
                           typed. Stamps the review closed.
   review --list           every review in the repository, and its state
   build [--out <path>]    compile the source tree into one self-contained
-                          file (default dist/leo). Vendor that into the repo
+                          file (default dist/leo.js). Vendor that into the repo
                           you work in, so it depends on a file it contains
                           rather than on a clone somewhere else.
   help                    this
 
 FILES
-  leo.ps1                 the Windows entry point. A wrapper, not a port: it
-                          finds a bash (Git for Windows, MSYS2, \$LEO_BASH),
-                          checks it can run leo, hands over, and returns leo's
-                          own exit code. There is one implementation of leo.
-  .gitattributes          pins every shell file to LF. Without it a Windows
-                          checkout gets CRLF and bash dies on a correct script.
+  bin/leo.js              the npm entry point. npm generates its .cmd and .ps1
+                          shims from this file's shebang, so pointing it at a
+                          Node program is what stops npm choosing leo's
+                          interpreter for it -- which is every Windows bug
+                          from 0.7.0 to 0.7.3.
+  src/lib/*.js            every shared fact: repo, plans, tasks, records,
+                          reviews, session, tools
+  src/cmd/*.js            one file per command. A new command is a new file.
+  .gitattributes          pins the files leo reads to LF. Node survives a
+                          carriage return where bash did not, but a CR in
+                          .leo/config still ends up inside a commit message.
   AGENTS.md               agent instructions, loaded every session (keep it short)
   .leo/workflow.md        the loop, read on demand
   .leo/rules/*.md         one lesson per file, each with a shell check
-  core/integrations/*.sh  the tools leo ships with: detect, hint, install, advise
-  .leo/integrations/*.sh  the tools your repo adds. Same contract, no registry.
+  src/integrations/*.js   the tools leo ships with: detect, hint, install, advise
+  .leo/integrations/*.js  the tools your repo adds. Same contract, no registry.
   .leo/config             TEST_CMD
   .leo/session            current mode (gitignored — it lands in the commit)
   .leo/plans/P1/plan.md   one change: goal, non-goals, tasks, budget. TRACKED:
@@ -170,4 +184,14 @@ WHY
   breaks without it. It ends up in the commit message, so when production breaks
   at 3am you run \`git blame\` and get an answer without asking an AI anything.
 
-EOF
+`;
+}
+
+function run(ctx) {
+  // One trailing newline is dropped: the text ends with one and `info` adds
+  // another, which is a blank line the shell version never printed.
+  info(text(ctx.assets.version()).replace(/\n$/, ''));
+  return 0;
+}
+
+module.exports = { run, text };

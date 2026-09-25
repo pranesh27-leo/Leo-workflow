@@ -148,93 +148,63 @@ leo 0.2.0
 
 ### On Windows
 
-leo is bash, and there is one implementation of it. A PowerShell port would be
-a second program that has to agree with the first about every check, every
-message and every exit code — and the day they stop agreeing is the day leo
-passes on one platform what it fails on the other. In a tool whose whole job
-is being trusted about whether a change was reviewed, that trade is not
-available.
-
-So Windows runs the same bash leo, through a bash that Windows has:
+Windows is a supported platform, not a platform leo is ported to. Install it
+and run it:
 
 ```powershell
-winget install --id Git.Git -e     # Git for Windows ships the right bash
 npm install -g leo-workflow
-leo --version
+leo init
 ```
 
-npm writes `leo.cmd` and `leo.ps1` onto your PATH, so `leo` works from
-PowerShell, `cmd.exe` and Git Bash alike. What they invoke is `node`, because
-`bin` points at `bin/leo.js`. That choice is the fix for the whole family of
-Windows failures, and it is worth being explicit about why.
+npm puts `leo.cmd` and `leo.ps1` on your PATH and both invoke `node`, which is
+guaranteed present because node is what ran npm.
 
-npm generates those shims from the bin target's shebang. Point `bin` at the
-bash script and npm reads `#!/usr/bin/env bash`, writes a shim that runs the
-first thing named `bash` on PATH, and the `leo.ps1` inside the package — the
-one that carefully looks for a bash and checks it — is not on PATH and never
-runs. The interpreter was chosen by npm, from a shebang, before leo had any
-say. Pointing `bin` at a Node program moves that decision inside leo: node is
-guaranteed present, because npm is what installed the package.
+That is worth one paragraph of history, because it was five releases of
+learning. leo used to be a bash program, and Windows does not have bash — it
+has several things willing to answer to the name:
 
-`bin/leo.js` looks in `$env:LEO_BASH`, then every bash on PATH, then beside
-`git.exe`, then the usual install locations; it verifies each candidate is
-genuinely bash, hands over with arguments passed as an array rather than
-joined, and returns leo's exit code unchanged — so `leo check` in a Windows
-build script means what it means everywhere else. `$env:LEO_SHOW_BASH = '1'`
-makes it name the bash it chose, which is the first thing worth knowing when
-something on Windows goes wrong.
+| | the failure | the cause |
+|---|---|---|
+| 0.7.0 | `syntax error: bad substitution` | npm generates its shims from the bin target's *shebang*. `#!/usr/bin/env bash` made it run the first `bash.exe` on PATH, which on the reporting machine was BusyBox, shipped inside STM32CubeCLT. |
+| 0.7.1 | `/bin/bash: C:/...: No such file` | the fix rejected BusyBox by asking for `$BASH_VERSION`, then accepted `C:\Windows\system32\bash.exe` — which answers correctly, because it *is* bash, inside WSL, which cannot open a `C:` path. |
+| 0.7.2 | (never published) | excluded WSL by path, still guessing at interpreters. |
+| 0.7.3 | ran, then hung | `bin` became a Node program, so npm stopped choosing. |
+| 0.7.4 | `leo --version` took minutes | counting changed lines ran `grep` and `wc` once per untracked file. On a west/Zephyr-scale tree that is thousands of spawns, and a spawn on Windows crosses into Win32 through an emulation layer at roughly ten times the native cost. |
 
-`leo` keeps a POSIX-sh guard of its own at the top of the file, for the ways
-it is run that never touch npm: a clone, a symlink onto PATH, a single-file
-bundle from `leo build`. It does the same job with the same rules. The
-package's own `leo.ps1` is the third route, for running leo straight out of
-its install directory, and does the same search with fuller diagnostics.
+The pattern is the same every time: none of those were bugs in leo's logic.
+They were the price of running a POSIX program on a system that emulates
+POSIX, and the port stopped paying it rather than negotiating it down. There
+is no bash to find, no interpreter to guess at, and nothing spawns a process
+per file — both of 0.7.4's questions are answered in memory.
 
-The test for "is this bash" is `BASH_VERSION`, and it is not pedantry. A
-`bash.exe` that is really BusyBox — STM32CubeCLT ships one in `Make\bin`,
-scoop's `busybox` package installs another — runs, exits 0 and answers
-`--version` with a bash version string, then meets `${BASH_SOURCE[0]}` and
-says `line 15: syntax error: bad substitution`, naming a line of perfectly
-good bash. Anything that checks only whether the candidate *runs* accepts it.
-Only bash sets `BASH_VERSION`.
+**Line endings are what is left.** Git for Windows defaults to
+`core.autocrlf=true`, which rewrites files on checkout. Node tolerates a
+carriage return where bash did not, so this no longer breaks the program
+outright — but leo *reads* `.leo/config` and `.leo/session`, and under bash it
+*sourced* them, which is why a CR was so destructive: `TEST_CMD="npm test"`
+became a command that does not exist, and `MODE=coding` silently matched no
+mode at all while `leo session` printed "coding" and looked right.
 
-Two candidates pass that test and are still wrong: `System32\bash.exe` and
-the `WindowsApps` alias for it are the WSL launcher, and WSL's bash is bash.
-They are excluded by path, and excluded *before* being executed, because
-probing one can boot a distribution or open the Microsoft Store. On a typical
-developer's machine both sit ahead of Git Bash on PATH — and Git Bash is
-often not on PATH at all, which is why the search also asks `git.exe` where
-it lives.
+Reading rather than sourcing removes that class outright — a CR is stripped
+before a value is ever assigned — and it has a second effect worth naming: a
+config file can no longer execute anything, which sourcing always allowed.
+leo still ships a `.gitattributes` pinning its own files to LF, and
+`leo check` still names any CRLF file it finds, because a stray carriage
+return otherwise ends up inside your commit message.
 
 | Situation | What to do |
 |---|---|
-| bash is somewhere unusual | `$env:LEO_BASH = 'C:\msys64\usr\bin\bash.exe'` |
-| you prefer WSL | `wsl leo check` — works, but see below |
-| the preflight is too slow in a loop | `$env:LEO_SKIP_PREFLIGHT = '1'` |
+| `leo` is not found after install | reopen the shell; npm's bin directory is added to PATH at install time |
+| you want to see what leo is doing | `leo check --verbose` |
+| a file has CRLF | `leo check` names it; `tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE` |
 
-WSL is supported and is not the recommendation. It sees your repository
-through `/mnt/c` with its own git, its own config, and its own view of file
-modes — so leo can be entirely correct about a repository that Windows tools
-then see differently. Git Bash has none of that distance.
-
-**The one that will bite you.** Git for Windows defaults to
-`core.autocrlf=true`, which rewrites files to CRLF on checkout. Do that to a
-shell script and bash fails with `$'\r': command not found` on a file that is
-byte-for-byte what its author wrote, plus one invisible character per line.
-leo ships a `.gitattributes` pinning its own files to LF so this cannot happen
-to leo itself, and `leo check` warns by name when it finds CRLF in a file you
-edited — because surviving a stray carriage return is not the same as it being
-right, and the CR otherwise ends up inside your commit message. To fix one by
-hand:
-
-```sh
-tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE
-```
-
-`t/windows.sh` is the negative suite for all of this: it audits the shipped
-tree for CRLF, GNU-only flags, reserved Windows filenames, case-insensitive
-collisions and unquoted paths, and it exercises spaces and CRLF for real on
-whatever platform it runs on.
+`t/windows.sh` is the negative suite for all of this. It used to be 79 checks
+and is now 39 — not because Windows got easier, but because most of what it
+guarded no longer exists to go wrong. What it still checks is what was never
+about bash: that `bin` points at a Node program so npm cannot pick the
+interpreter, that nothing spawns a shell utility per file, that a CR in
+`.leo/config` is stripped, reserved Windows filenames, case-insensitive
+collisions, MAX_PATH, and paths with spaces exercised for real.
 
 ### Or vendor it into the repository instead
 
@@ -1566,7 +1536,7 @@ compressor still on.
 ### The tools it can name
 
 Seven capabilities, each with an adapter. An adapter is a file in
-`core/integrations/` that answers three questions and does nothing else:
+`src/integrations/` that answers three questions and does nothing else:
 
 ```sh
 serena_present() { command -v serena >/dev/null 2>&1; }   # installed?

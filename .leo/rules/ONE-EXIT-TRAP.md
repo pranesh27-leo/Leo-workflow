@@ -1,12 +1,18 @@
-# MUST NOT install an EXIT trap outside core/lib.sh
+# MUST NOT install an exit handler outside src/lib/exit.js
 
-MUST: only `core/lib.sh` calls `trap ... EXIT`. Everything else that needs
-cleanup registers it with `leo_atexit_add`.
+MUST: only `src/lib/exit.js` calls `process.on('exit')`. Everything else that
+needs cleanup registers it with `atexitAdd`.
 
-`trap` does not stack. The last EXIT trap installed silently replaces every
-earlier one, and nothing anywhere reports that it happened. A command that
-installs its own therefore un-installs leo's — and leo's is what writes
-`SESSION.md` on the way out.
+Under bash this rule existed because `trap` does NOT stack: the last EXIT trap
+installed silently replaced every earlier one, so a command that installed its
+own un-installed leo's — and leo's is what writes `SESSION.md` on the way out.
+
+Node's `process.on('exit')` does stack, so that exact failure is gone. The rule
+survives the port because the reason underneath it did not. An exit handler
+cannot await anything, the session document is written from one, and a second
+handler registered somewhere else runs in an order nobody declared — after the
+document is written, against state it has already read. One place registers
+it, and the ordering is then a fact rather than a coincidence.
 
 That failure is invisible in exactly the way that matters. The command still
 works. Its own temp file is still deleted. The only symptom is that
@@ -28,13 +34,13 @@ trap routinely does not.
 
 ```sh
 # Comments may discuss the pattern -- this rule is about code that runs it.
-hits=$(grep -rn 'trap .*EXIT' core/ leo 2>/dev/null \
-       | grep -v '^core/lib\.sh:' \
-       | grep -v '^[^:]*:[0-9]*: *#')
+hits=$(grep -rn "process\.on( *['\"]exit" src/ leo 2>/dev/null \
+       | grep -v '^src/lib/exit\.js:' \
+       | grep -v '^[^:]*:[0-9]*: *//')
 
 [ -z "$hits" ] && exit 0
-echo "EXIT trap outside core/lib.sh — it replaces leo's, silently:"
+echo "exit handler outside src/lib/exit.js — the ordering stops being declared:"
 printf '%s\n' "$hits"
-echo "  use: leo_atexit_add 'rm -f \"\$tmp\"'"
+echo "  use: atexitAdd(function () { ... })"
 exit 1
 ```

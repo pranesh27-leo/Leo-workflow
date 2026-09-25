@@ -73,6 +73,12 @@ function modePolicy(mode) {
 function loadAdapters(ctx) {
   const adapters = {};
 
+  // A bundle has no src/integrations/ to glob -- the built-ins are compiled
+  // into it. The repository's own adapters are still read from disk below:
+  // dropping them would be the easy bug, a bundle that silently cannot load
+  // the adapters a team wrote for their own repo.
+  if (ctx.bundle) Object.assign(adapters, ctx.bundle.integrations);
+
   // A leading underscore marks a shared helper rather than an adapter.
   // Without this, src/integrations/_which.js becomes a capability named
   // "_which" -- listed in `leo session`, counted in the fingerprint, and
@@ -80,7 +86,7 @@ function loadAdapters(ctx) {
   const isAdapterFile = (f) => f.endsWith('.js') && f[0] !== '_';
 
   const builtinDir = path.join(ctx.leoHome, 'src', 'integrations');
-  if (isDir(builtinDir)) {
+  if (!ctx.bundle && isDir(builtinDir)) {
     for (const f of fs.readdirSync(builtinDir).sort()) {
       if (!isAdapterFile(f)) continue;
       const name = f.slice(0, -3);

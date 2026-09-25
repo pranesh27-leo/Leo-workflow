@@ -410,11 +410,16 @@ printf '\none EXIT trap, or SESSION.md stops being written\n'
 # Comments may discuss the pattern; this is about code that runs it. Same
 # exclusion as .leo/rules/ONE-EXIT-TRAP.md, which is the durable copy -- this
 # is here so the suite catches it without a leo repository to run rules in.
-hits=$(grep -rn "trap .*EXIT" "$LEOHOME/core/" 2>/dev/null \
-       | grep -v '^[^:]*core/lib\.sh:' \
-       | grep -v '^[^:]*:[0-9]*: *#' || true)
-[ -z "$hits" ] && ok "no command installs an EXIT trap of its own" \
-               || bad "EXIT trap outside core/lib.sh: $hits"
+# The same rule, against the mechanism that replaced the shell trap: Node's
+# process.on('exit') does stack rather than silently replacing, so the failure
+# is no longer "the last one wins" -- it is a second handler running after the
+# session document is written, in a handler that cannot await anything. One
+# place registers it, and src/lib/exit.js is that place.
+hits=$(grep -rn "process\.on( *['\"]exit" "$LEOHOME/src/" 2>/dev/null \
+       | grep -v '^[^:]*src/lib/exit\.js:' \
+       | grep -v '^[^:]*:[0-9]*: *//' || true)
+[ -z "$hits" ] && ok "no command installs an exit handler of its own" \
+               || bad "exit handler outside src/lib/exit.js: $hits"
 
 printf '\npackaging\n'
 if bash "$LEOHOME/t/package.sh" >"$TMP/pkg.out" 2>&1; then

@@ -29,7 +29,8 @@ function manifestReport(manifestFile) {
   for (const line of body.split('\n')) {
     if (!/^\| *[0-9NEW]/.test(line)) continue;
     n++;
-    const t = (line.split('|')[5] || '').replace(/[ \t]/g, '');
+    // [4] is the Task column -- see the note in src/lib/session.js.
+    const t = (line.split('|')[4] || '').replace(/[ \t]/g, '');
     if (t === '') blank++;
     else if (t === '-') free++;
   }

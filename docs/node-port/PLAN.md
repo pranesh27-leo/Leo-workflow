@@ -1,5 +1,9 @@
 # Porting leo to Node
 
+**Done.** Landed in 0.8.0. What follows is the plan as written, kept
+because the reasoning is the record — the phases ran in order and the
+verification at the end of each is what the suite now asserts.
+
 ## Why
 
 Every Windows fix in 0.7.1–0.7.4 was leo fighting the fact that bash is not

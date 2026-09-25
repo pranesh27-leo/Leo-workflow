@@ -82,8 +82,8 @@ npm install -g leo-workflow
 cd ~/your-repo && leo init
 ```
 
-Or from a clone, which is the same tool and the same files — leo is bash, and
-npm is only carrying it:
+Or from a clone, which is the same tool and the same files — npm is only
+carrying it:
 
 ```sh
 ln -s "$PWD/leo" /usr/local/bin/leo
@@ -94,74 +94,52 @@ Or vendor a single self-contained file into the repository itself, so it
 depends on something it contains rather than on a clone on somebody's laptop:
 
 ```sh
-leo build && cp dist/leo ~/your-repo/.leo/bin/leo
+leo build && cp dist/leo.js ~/your-repo/.leo/bin/leo.js
 ```
 
-Needs bash 3.2 or newer and git. Nothing else: no node at runtime, no network,
-no daemon.
+Needs node 14 or newer and git. Nothing else: no dependencies, no network, no
+daemon. `npm ls` on a leo install prints one line, and that is the point —
+leo is a tool for keeping a repository honest, and a tool like that earning a
+supply chain of its own would be funny in the wrong way.
 
 ### Windows
 
-leo is a bash program, and there is exactly one implementation of it — a
-second one in PowerShell would be two programs that have to agree about every
-check and every exit code, and the day they stop agreeing is the day leo
-passes on one platform what it fails on the other.
-
-So Windows needs a bash, and [Git for Windows](https://git-scm.com/download/win)
-ships the right one:
+leo is a Node program, and Windows is a supported platform rather than a
+platform it is ported to. `npm install -g leo-workflow` is the whole
+installation:
 
 ```powershell
-winget install --id Git.Git -e
 npm install -g leo-workflow
 leo init
 ```
 
-`npm` puts `leo.cmd` and `leo.ps1` on your PATH, so `leo` works from
-PowerShell, from `cmd.exe` and from Git Bash. Those shims call **node**, not
-bash — `bin/leo.js` is the npm entry point, and it finds a real bash and hands
-over. That indirection is the whole Windows story: if `bin` pointed at the
-bash script, npm would read its shebang and run the first thing named `bash`
-on your PATH, which on a real machine is as likely to be a vendor toolchain's
-BusyBox or the WSL launcher as it is to be Git Bash.
+npm puts `leo.cmd` and `leo.ps1` on your PATH, and both invoke `node` — which
+is guaranteed to be there, because node is what ran npm.
 
-Stuck? `$env:LEO_SHOW_BASH = '1'` makes leo print which bash it picked.
+That indirection is the whole Windows story, and it was learned the hard way.
+leo used to be a bash program, and every Windows release from 0.7.0 to 0.7.4
+was a bug caused by that:
 
-Bash somewhere else — MSYS2, Cygwin, a portable install? Point leo at it:
+| | what you saw | what it was |
+|---|---|---|
+| 0.7.0 | `syntax error: bad substitution` | npm read the shebang and ran the first `bash.exe` on PATH — BusyBox, from a vendor toolchain |
+| 0.7.1 | `/bin/bash: C:/...: No such file` | the fix accepted `System32\bash.exe`, which *is* bash, and is the WSL launcher |
+| 0.7.3 | worked | the entry point stopped being a shell script |
+| 0.7.4 | `leo --version` hung for minutes | `grep` and `wc` ran once per untracked file, and a process spawn on Windows costs an order of magnitude more than it does natively |
 
-```powershell
-$env:LEO_BASH = 'C:\msys64\usr\bin\bash.exe'
-```
+None of those were bugs in leo's logic. They were the cost of running a POSIX
+program on a system that emulates POSIX, and the port removed the cost rather
+than tuning it. There is no bash to find, no interpreter to guess at, and
+nothing spawns a process per file.
 
-WSL works too (`wsl leo check`), but Git Bash is the better answer: WSL sees
-your repository through `/mnt/c`, with its own git and its own view of file
-modes and line endings.
-
-**A bash that is not bash.** If `leo` dies with
-
-```
-C:/Users/you/.../leo-workflow/leo: line 15: syntax error: bad substitution
-```
-
-then something on your PATH is named `bash.exe` and is not bash. It answers
-`bash --version` convincingly and then cannot parse the first line of real
-bash it meets. Vendor toolchains are the usual source — STM32CubeCLT ships one
-in `Make\bin`, and scoop's `busybox` package installs another — and they land
-ahead of Git Bash on PATH. Run `Get-Command bash -All` to see yours.
-
-leo steps over these and keeps looking. It also steps over
-`C:\Windows\system32\bash.exe` and the `WindowsApps` alias beside it, which
-*are* bash but are the WSL launcher: WSL sees your repository through
-`/mnt/c`, so handing it a `C:\...` path fails and handing it a repository
-succeeds for the wrong reasons. Use `wsl leo check` when you want that on
-purpose. If no real bash is found, install Git for Windows or set
-`$env:LEO_BASH` as above.
-
-**Line endings will bite you if you skip this.** Git for Windows defaults to
-`core.autocrlf=true`, which rewrites shell scripts to CRLF on checkout and
-makes bash fail with `$'\r': command not found` on a file that is otherwise
-perfect. leo ships a `.gitattributes` that pins its own files to LF, and
-`leo check` warns when it finds CRLF in a file you edited. If you hit it
-anyway: `tr -d '\r' < FILE > FILE.tmp && mv FILE.tmp FILE`.
+**Line endings are the one thing left.** Git for Windows defaults to
+`core.autocrlf=true`, which rewrites files on checkout. Node tolerates a
+carriage return where bash did not, so this no longer breaks leo outright —
+but leo *reads* `.leo/config`, and a CR used to end up inside the value:
+`TEST_CMD="npm test"` became a command that does not exist. leo strips them on
+read now, ships a `.gitattributes` pinning its own files to LF, and
+`leo check` still names any CRLF file it finds, because a stray carriage
+return otherwise lands inside your commit message.
 
 ## Use
 
@@ -223,10 +201,10 @@ files ends up inside the commit message it describes.
 ## Layout
 
 ```
-leo                dispatch: a command is a file in core/cmd/, no registry
-core/lib.sh        every shared helper, one screen
-core/cmd/*.sh      one file per command, readable top to bottom
-core/integrations/ the tools leo ships with: detect, hint, install, advise
+leo                dispatch: a command is a file in src/cmd/, no registry
+src/lib/*.js       every shared fact, one file per concern
+src/cmd/*.js       one file per command, readable top to bottom
+src/integrations/  the tools leo ships with: detect, hint, install, advise
 templates/         what `leo init` copies into a repository
 .claude/           a Claude Code front door for cycle two: a `/review` command
                    and a read-only reviewer subagent. Copy them into your own
@@ -239,7 +217,7 @@ templates/         what `leo init` copies into a repository
 There are exactly three extension points, and none requires touching the code:
 
 - **A new check** is a new file in `.leo/rules/`.
-- **A new command** is a new file in `core/cmd/`. `leo <name>` finds it.
+- **A new command** is a new file in `src/cmd/`. `leo <name>` finds it.
 - **A new tool** is a new file in `.leo/integrations/`, committed with your
   repo, defining two required functions — is it installed, how do you install
   it — and up to four optional ones. `leo session --<name> on` and
@@ -339,7 +317,7 @@ be reviewed like anything else you commit.
 
 ## Requirements
 
-git, bash 3.2, and a POSIX userland. No jq, no node, no network.
+git and node 14. No dependencies, no network.
 
 ## Licence
 

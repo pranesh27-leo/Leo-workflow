@@ -1,33 +1,31 @@
 #!/usr/bin/env bash
-# Negative tests for Windows / PowerShell support.
+# Negative tests for Windows.
 #
-# leo is a bash program. "Working on Windows" does not mean a second
-# implementation -- it means one implementation that a Windows user can
-# install, invoke from PowerShell, and run against a repository whose paths,
-# line endings and temp directory all look nothing like a Unix machine's.
+# This file used to be 79 checks, and most of them are gone -- not because
+# Windows got easier, but because leo stopped being a bash program. Every one
+# of 0.7.0 through 0.7.4 was a Windows bug, and every one of them had the same
+# cause: a POSIX program running on a system that emulates POSIX.
 #
-# Every way that fails is silent. That is the whole problem, and it is why
-# this file is negative tests rather than a happy path:
+#   0.7.0  `syntax error: bad substitution` -- npm read the shebang and ran
+#          the first bash.exe on PATH, which was BusyBox from a vendor
+#          toolchain
+#   0.7.1  `/bin/bash: C:/...: No such file` -- the guard rejected BusyBox and
+#          accepted System32\bash.exe, the WSL launcher, which IS bash and
+#          cannot open a C: path
+#   0.7.2  excluded WSL by path, still guessing at interpreters
+#   0.7.3  moved the choice into a Node entry point, which is this design
+#   0.7.4  `leo --version` hung for minutes -- grep and wc once per untracked
+#          file, and a process spawn on Windows costs an order of magnitude
+#          more than it does natively
 #
-#   CRLF          the script is byte-for-byte correct plus one invisible
-#                 character per line, and bash says `$'\r': command not found`
-#   the os field  npm refuses to install and the user never sees leo at all
-#   spaces        C:\Program Files and C:\Users\John Smith are ordinary paths,
-#                 and an unquoted variable splits them into two arguments
-#   GNU flags     `sed -i` and `readlink -f` work on Linux, fail on Git Bash,
-#                 and fail differently on macOS
-#   reserved names  a file called `aux.md` cannot exist on Windows at all
+# The checks those needed -- impostor bash, the BASH_VERSION probe, the WSL
+# exclusion, the POSIX re-exec guard, leo.ps1's preflight, GNU-only flags,
+# shebang portability, the MSYS toolchain -- have nothing left to test. npm's
+# generated shims invoke node, and node is what installed the package.
 #
-# None of these can be caught by running leo on a Mac and watching it pass.
-# So most of what follows is a static audit of the shipped tree, plus the
-# Windows conditions that CAN be reproduced anywhere -- spaces and CRLF --
-# exercised for real.
-#
-# The PowerShell sections run against a real pwsh when one is present (pwsh
-# runs on macOS and Linux too) and degrade to a structural audit when it is
-# not. They are never silently skipped: a skip is printed, because a test
-# suite that quietly checks nothing is the failure mode this repository has
-# already been bitten by once.
+# What remains is what was never about bash: the filesystem rules a Unix tree
+# can break, paths with spaces, CRLF in the files leo READS, and whether a
+# Windows user can install it at all.
 
 set -u
 LEOHOME=$(cd -P "$(dirname "$0")/.." && pwd)
@@ -41,429 +39,216 @@ ok()   { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf '  FAIL  %s\n' "$1"; }
 note() { skip=$((skip + 1)); printf '  skip  %s\n' "$1"; }
 
-# absent <label> <pattern> <files...> — the shipped tree must NOT contain a
-# pattern. Comments are excluded: this repository discusses the things it
-# forbids at length, and a rule that cannot survive being written about is a
-# rule nobody can document.
-absent() {
-  _label="$1"; _pat="$2"; shift 2
-  _hits=$(grep -nE "$_pat" "$@" 2>/dev/null | grep -v '^[^:]*:[0-9]*: *#' || true)
-  if [ -z "$_hits" ]; then
-    ok "$_label"
-  else
-    bad "$_label"
-    printf '%s\n' "$_hits" | sed 's/^/        /' | head -6
-  fi
-}
-
-# The files that actually ship. Everything below audits this set and not the
-# repository, because the repository has tests, fixtures and a dist/ that no
-# Windows user will ever receive.
-shipped_sh() {
-  printf '%s\n' "$LEOHOME/leo" "$LEOHOME/core/lib.sh"
-  for f in "$LEOHOME"/core/cmd/*.sh "$LEOHOME"/core/integrations/*.sh; do
-    [ -f "$f" ] && printf '%s\n' "$f"
-  done
-}
-
 # =========================================================================
-printf '\nline endings — the one that makes a correct script fail\n'
+printf '\nthe entry point — who chooses the interpreter\n'
 # =========================================================================
+# The structural assertion, and the one that matters most. npm generates its
+# shims from the bin target's SHEBANG: point bin at a shell script and npm
+# writes a shim that runs the first thing of that name on PATH, and leo is
+# back to arguing with an interpreter somebody else picked. A .js bin means
+# the shim invokes node, which is guaranteed present because npm is what
+# installed the package.
+binfield=$(sed -n 's/.*"leo": *"\([^"]*\)".*/\1/p' "$LEOHOME/package.json" | head -1)
+case "$binfield" in
+  *.js) ok "package.json bin points at a Node program, not a shell script" ;;
+  *) bad "bin is '$binfield' — npm will read its shebang and pick the interpreter" ;;
+esac
 
-# Proof that this matters, rather than an assertion that it does. A file with
-# CRLF is handed to bash and must fail; if it does not, the rest of this
-# section is testing nothing.
-printf '#!/usr/bin/env bash\r\necho hello\r\n' > "$TMP/crlf-probe.sh"
-if bash "$TMP/crlf-probe.sh" >/dev/null 2>&1; then
-  note "this bash tolerates CRLF — the CRLF checks below still matter on Git Bash"
+if head -1 "$LEOHOME/bin/leo.js" 2>/dev/null | grep -q '^#!/usr/bin/env node$'; then
+  ok "bin/leo.js asks for node, so npm's shim calls node"
 else
-  ok "a CRLF shell script fails to run (this is what .gitattributes prevents)"
+  bad "bin/leo.js has no node shebang — npm's shim will not call node"
 fi
 
-[ -f "$LEOHOME/.gitattributes" ] \
-  && ok ".gitattributes exists" \
-  || bad ".gitattributes is missing — Windows checkouts get CRLF and leo dies"
+# leo must not need a shell to start. This is the property the whole port
+# bought, and it is cheap to assert: run it with a PATH that has node and
+# nothing else on it.
+noderoot=$(dirname "$(command -v node)")
+out=$(PATH="$noderoot" "$(command -v node)" "$LEOHOME/bin/leo.js" --version 2>&1)
+printf '%s' "$out" | grep -q '^leo ' \
+  && ok "leo runs with only node on PATH — no shell involved" \
+  || bad "leo needs something besides node to start: $out"
 
-# Not "does the file mention lf" but "does git, right now, resolve these paths
-# to eol=lf". Asking git is the only answer that cannot drift from what git
-# actually does on checkout.
-if command -v git >/dev/null 2>&1 && [ -d "$LEOHOME/.git" ]; then
-  miss=""
-  for p in leo core/lib.sh core/cmd/plan.sh core/cmd/agents.sh \
-           core/integrations/serena.sh templates/AGENTS.md \
-           templates/workflow.md package.json VERSION .gitignore; do
-    got=$(cd "$LEOHOME" && git check-attr eol -- "$p" 2>/dev/null | sed 's/.*: //')
-    [ "$got" = "lf" ] || miss="$miss $p:${got:-unset}"
-  done
-  [ -z "$miss" ] && ok "git resolves every shipped path to eol=lf" \
-                 || bad "paths git would check out as CRLF:$miss"
+# And nothing in the source may reach for a shell to do the work. `shell: true`
+# hands Windows an interpreter leo does not control and reintroduces every
+# quoting bug the argument-array form makes impossible.
+hits=$(grep -rn "shell: *true" "$LEOHOME/src/" 2>/dev/null | grep -v '^[^:]*:[0-9]*: *//' || true)
+[ -z "$hits" ] && ok "no spawn uses shell: true" \
+               || bad "shell: true reintroduces the interpreter problem: $hits"
 
-  # The glob has to cover a file that does not exist yet. A new command is a
-  # new file in core/cmd/, and the next one must be born LF without anybody
-  # remembering to add a line here.
-  got=$(cd "$LEOHOME" && git check-attr eol -- core/cmd/not-written-yet.sh 2>/dev/null | sed 's/.*: //')
-  [ "$got" = "lf" ] \
-    && ok "a command that does not exist yet is already covered by the glob" \
-    || bad "core/cmd/*.sh is not covered — the next command ships CRLF"
-
-  # PowerShell is the deliberate exception. Windows PowerShell 5.1 is the one
-  # consumer that cares, and CRLF is its native convention.
-  got=$(cd "$LEOHOME" && git check-attr eol -- leo.ps1 2>/dev/null | sed 's/.*: //')
-  [ "$got" = "crlf" ] \
-    && ok "leo.ps1 is eol=crlf, which is what PowerShell wants" \
-    || bad "leo.ps1 resolves to ${got:-unset}, expected crlf"
-else
-  note "not a git checkout — cannot ask git how it would check these out"
-fi
-
-# And nothing in the tree has CRLF *now*. .gitattributes governs what git
-# writes; this governs what is sitting here to be packed into a tarball.
-crlf_now=""
-for f in $(shipped_sh); do
-  LC_ALL=C grep -q "$(printf '\r')" "$f" 2>/dev/null && crlf_now="$crlf_now ${f#"$LEOHOME"/}"
-done
-for f in "$LEOHOME"/templates/*.md "$LEOHOME"/templates/*/*.md "$LEOHOME"/templates/*/*/*.md; do
-  [ -f "$f" ] || continue
-  LC_ALL=C grep -q "$(printf '\r')" "$f" 2>/dev/null && crlf_now="$crlf_now ${f#"$LEOHOME"/}"
-done
-[ -z "$crlf_now" ] && ok "no shipped file currently contains a carriage return" \
-                   || bad "CRLF already in the tree:$crlf_now"
+# The bash that IS still spawned is deliberate and countable: rule Verify
+# blocks and TEST_CMD are the repository's own commands, and running them
+# needs a shell by definition. Anything beyond those two is a regression
+# toward the per-file spawning that made 0.7.4 hang.
+nspawn=$(grep -rn "spawnSync('bash'" "$LEOHOME/src/" 2>/dev/null | grep -vc '^[^:]*:[0-9]*: *//' || true)
+[ "${nspawn:-0}" -le 2 ] \
+  && ok "bash is spawned in ${nspawn:-0} place(s) — the repo's own commands only" \
+  || bad "bash is spawned in ${nspawn} places — something is shelling out again"
 
 # =========================================================================
-printf '\nCRLF at runtime — what an editor does after checkout\n'
+printf '\nspawning — the 0.7.4 hang, structurally\n'
 # =========================================================================
-# .gitattributes cannot stop a developer opening .leo/config in Notepad. leo
-# has to survive that, because the failure it produces otherwise blames the
-# developer's test runner for something leo did.
-
-mkdir -p "$TMP/crlf" && cd "$TMP/crlf"
+# `leo --version` took minutes on a Zephyr-scale tree because counting lines
+# ran two processes per untracked file. Both questions are answered in-process
+# now. The assertion is a count of spawns, not a clock: timing is flaky across
+# machines, and this bug shipped precisely because nobody could see the cost
+# until it was five minutes on a stranger's machine.
+SP="$TMP/spawn"; mkdir -p "$SP" && cd "$SP"
 git init -q . && git config user.email t@t && git config user.name t
-echo one > f.txt && git add -A && git commit -qm init
+: > base.txt && git add -A && git commit -qm base >/dev/null 2>&1
+for i in $(seq 1 60); do printf 'x\n' > "f$i.txt"; done
+
+SPIES="$TMP/spies"; CALLS="$TMP/calls"
+mkdir -p "$SPIES"; : > "$CALLS"
+for tool in grep wc sed awk; do
+  real=$(command -v "$tool")
+  [ -n "$real" ] || continue
+  cat > "$SPIES/$tool" <<SPY
+#!/bin/sh
+echo $tool >> "$CALLS"
+exec "$real" "\$@"
+SPY
+  chmod +x "$SPIES/$tool"
+done
+
+PATH="$SPIES:$PATH" "$LEO" --version >/dev/null 2>&1
+n=$(wc -l < "$CALLS" | tr -d ' ')
+[ "${n:-0}" -eq 0 ] \
+  && ok "leo --version spawns no grep/wc/sed/awk, with 60 untracked files" \
+  || bad "leo --version spawned $n shell utilities — the per-file cost is back"
+cd "$LEOHOME"
+
+# =========================================================================
+printf '\nCRLF — what an editor does after checkout\n'
+# =========================================================================
+# .gitattributes stops this for anything arriving through git. It cannot stop
+# a developer opening .leo/config in Notepad, and leo READS that file.
+#
+# Under bash the file was *sourced*, which is why a carriage return was so
+# destructive: TEST_CMD="true"^M ran a command that does not exist, and
+# MODE=coding^M silently matched no mode at all. Reading rather than sourcing
+# removes the class -- but only if the reader actually strips the CR, which is
+# what this checks.
+CR="$TMP/crlf"; mkdir -p "$CR" && cd "$CR"
+git init -q . && git config user.email t@t && git config user.name t
+echo x > f.txt && git add -A && git commit -qm base >/dev/null 2>&1
 "$LEO" init >/dev/null 2>&1
 
-# The exact failure: TEST_CMD="true" saved with CRLF used to make leo report
-# `true failed -- command not found` about a command that is a shell builtin.
 printf 'TEST_CMD="true"\r\n' > .leo/config
-out=$("$LEO" check 2>&1 || true)
+out=$("$LEO" check 2>&1)
 printf '%s' "$out" | grep -q 'command not found' \
-  && bad "a CRLF .leo/config still breaks TEST_CMD" \
-  || ok "a CRLF .leo/config does not break TEST_CMD"
+  && bad "a CR in TEST_CMD reached the shell — the value was not stripped" \
+  || ok "a CR in TEST_CMD is stripped before the command runs"
 
-# The silent one, which is worse. MODE=coding with a trailing CR never matches
-# `coding` in mode_policy, so every capability falls through to its adapter
-# default and the declared mode governs nothing -- while `leo session` prints
-# "coding" and looks correct.
+# The silent half, and the worse one: a mode that does not match is not an
+# error, it just governs nothing.
 printf 'MODE=coding\r\n' > .leo/session
-probe=$(cat <<'PROBE'
-. "$LEO_HOME/core/lib.sh"
-printf '%s|%s|%s\n' "${#MODE}" "$(mode_policy "$MODE" | wc -c | tr -d ' ')" "$(cap_state serena)"
-PROBE
-)
-printf '%s\n' "$probe" > "$TMP/probe.sh"
-res=$(LEO_HOME="$LEOHOME" bash "$TMP/probe.sh" 2>/dev/null)
-mlen=${res%%|*}; rest=${res#*|}; plen=${rest%%|*}; state=${rest##*|}
-[ "$mlen" = "6" ] && ok "a CRLF .leo/session yields MODE with no carriage return" \
-                  || bad "MODE is $mlen chars, expected 6 — the CR survived"
-[ "${plen:-0}" -gt 1 ] && ok "the mode still matches a policy through CRLF" \
-                       || bad "mode_policy matched nothing — the declared mode governs nothing"
-[ "$state" = "on" ] && ok "capabilities still follow the declared mode" \
-                    || bad "cap_state fell through to a default: got '$state'"
+mode=$(node -e '
+  var c = require(process.argv[1] + "/src/lib/fsx.js").loadConfig(".leo/session");
+  process.stdout.write(JSON.stringify(c.MODE));
+' "$LEOHOME" 2>/dev/null)
+[ "$mode" = '"coding"' ] \
+  && ok "a CR in MODE is stripped — the mode still governs" \
+  || bad "MODE parsed as $mode — a CR made the declared mode match nothing"
 
-# And leo must SAY it found CRLF rather than only coping. Coping silently
-# means the stray carriage returns end up inside a commit message.
-"$LEO" plan "crlf" >/dev/null 2>&1
-out=$("$LEO" check 2>&1 || true)
+# And leo says so rather than only surviving it: a stray CR otherwise ends up
+# inside the commit message.
+out=$("$LEO" check 2>&1)
 printf '%s' "$out" | grep -qi 'line ending\|CRLF' \
-  && ok "leo check reports the CRLF files by name" \
-  || bad "leo check copes with CRLF silently — the CR reaches the commit message"
-
+  && ok "leo check names the file with CRLF" \
+  || bad "leo check survived CRLF without mentioning it"
 cd "$LEOHOME"
+
+# The policy that stops it at the source. Every file leo reads or executes is
+# pinned to LF, permanently, regardless of the developer's git config.
+for p in leo bin/leo.js src/cli.js src/lib/ui.js src/cmd/plan.js \
+         src/integrations/serena.js templates/AGENTS.md .leo/config; do
+  got=$(cd "$LEOHOME" && git check-attr eol -- "$p" 2>/dev/null | sed 's/.*: //')
+  [ "$got" = "lf" ] \
+    && ok ".gitattributes pins $p to LF" \
+    || bad "$p is not pinned to LF (eol=$got) — a Windows checkout rewrites it"
+done
+
+# Covered by a glob rather than a list, so the next module is born LF without
+# anybody remembering to add a line.
+got=$(cd "$LEOHOME" && git check-attr eol -- src/cmd/not-written-yet.js 2>/dev/null | sed 's/.*: //')
+[ "$got" = "lf" ] \
+  && ok "src/**/*.js is covered by a glob, not a list" \
+  || bad "src/*.js is not covered — the next command ships CRLF"
 
 # =========================================================================
 printf '\nnpm — can a Windows user install it at all\n'
 # =========================================================================
-
-# The os field is a hard refusal: `npm install -g` on win32 fails outright and
-# the user never gets as far as discovering leo needs bash.
-if grep -q '"os"' package.json; then
-  if grep -A1 '"os"' package.json | grep -q 'win32'; then
-    ok "package.json declares an os list that includes win32"
+# This assertion used to be the exact opposite: it required an os list, on the
+# reasoning that leo is bash and refusing at install time is more honest than
+# failing at first run. The premise is gone twice over -- leo is a Node
+# program, and node is what runs npm.
+if grep -q '"os"' "$LEOHOME/package.json"; then
+  if grep -A1 '"os"' "$LEOHOME/package.json" | grep -q 'win32'; then
+    ok "package.json's os list includes win32"
   else
     bad "package.json has an os list without win32 — npm refuses to install on Windows"
   fi
 else
-  ok "package.json declares no os restriction — Windows can install it"
+  ok "package.json places no os restriction on installing"
 fi
 
-# npm's cmd-shim reads the shebang of the bin target to decide what to write
-# into leo.cmd and leo.ps1. No shebang, or one it cannot parse, and Windows
-# gets a shim that tries to execute a bash script as a batch file.
-shebang=$(head -1 leo)
-case "$shebang" in
-  '#!/usr/bin/env bash') ok "the bin target's shebang is one npm's cmd-shim can parse" ;;
-  '#!'*bash*)            ok "the bin target has a bash shebang ($shebang)" ;;
-  *)                     bad "bin shebang is '$shebang' — cmd-shim cannot make a Windows shim from it" ;;
-esac
+grep -q '"\.gitattributes"' "$LEOHOME/package.json" \
+  && ok ".gitattributes is in the published files list" \
+  || bad ".gitattributes is not published — a Windows checkout rewrites leo's own files"
 
-for f in leo.ps1 .gitattributes; do
-  grep -q "\"$f\"" package.json \
-    && ok "$f is in the published files list" \
-    || bad "$f is not published — Windows users never receive it"
-done
-
-# What npm would actually ship, if npm is here to ask.
-if command -v npm >/dev/null 2>&1; then
-  listing=$(npm pack --dry-run --ignore-scripts --json 2>/dev/null \
-            | sed -n 's/.*"path": *"\([^"]*\)".*/\1/p')
-  [ -z "$listing" ] && listing=$(npm pack --dry-run --ignore-scripts 2>&1)
-  if [ -n "$listing" ]; then
-    m=""
-    for f in leo.ps1 .gitattributes; do
-      printf '%s\n' "$listing" | grep -q "$f" || m="$m $f"
-    done
-    [ -z "$m" ] && ok "npm pack includes the Windows files" \
-                || bad "npm would drop:$m"
-  else
-    note "npm pack produced no listing"
-  fi
-else
-  note "npm is not installed — cannot check the real pack listing"
-fi
-
-# =========================================================================
-printf '\nthe PowerShell wrapper\n'
-# =========================================================================
-
-PS1F="$LEOHOME/leo.ps1"
-if [ ! -f "$PS1F" ]; then
-  bad "leo.ps1 is missing — there is no PowerShell entry point"
-else
-  ok "leo.ps1 exists"
-
-  # It is a wrapper. If it ever grows leo's own vocabulary it has stopped
-  # being a wrapper and become a second implementation that has to agree with
-  # the first about every check, every message and every exit code.
-  absent "leo.ps1 does not reimplement leo" \
-    '(manifest|ungrilled|cap_state|plan_status|leo:tools|\.leo/plan)' "$PS1F"
-
-  # Exit codes are part of leo's contract: 0 success, 1 a check failed, 2 the
-  # commit refused. A wrapper that swallows them makes every `if (leo check)`
-  # in a caller's script wrong.
-  grep -q 'exit \$exitCode' "$PS1F" \
-    && ok "leo.ps1 propagates leo's exit code" \
-    || bad "leo.ps1 does not propagate the exit code — 'a check failed' becomes 'success'"
-
-  # Arguments must pass as an array. Joining them means re-quoting, and leo
-  # takes free text: `leo defer T3 "waiting on the vendor's key"` has both a
-  # space and an apostrophe in one argument.
-  if grep -qE '\$Arguments\s*-join' "$PS1F"; then
-    if grep -qE '@Arguments' "$PS1F"; then
-      ok "leo.ps1 splats arguments (a -join appears only in a message)"
-    else
-      bad "leo.ps1 joins arguments into a string — quoting will be wrong"
-    fi
-  else
-    grep -q '@Arguments' "$PS1F" \
-      && ok "leo.ps1 splats arguments rather than joining them" \
-      || bad "leo.ps1 does not pass arguments through"
-  fi
-
-  # A user with no bash must be told what to install, by name.
-  for want in 'git-scm.com\|winget' 'LEO_BASH'; do
-    grep -q "$want" "$PS1F" \
-      && ok "leo.ps1 names $(printf '%s' "$want" | tr -d '\\') in its no-bash message" \
-      || bad "leo.ps1 does not mention $want — a user with no bash is stuck"
-  done
-
-  # It must not hardcode one bash path and give up.
-  n=$(grep -c 'bash\.exe' "$PS1F" || true)
-  [ "${n:-0}" -ge 3 ] \
-    && ok "leo.ps1 searches several bash locations ($n candidates)" \
-    || bad "leo.ps1 checks ${n:-0} bash location(s) — too few to find a real install"
-
-  # CRLF: PowerShell 5.1 is the consumer and CRLF is its convention. The file
-  # on disk here may be LF because git normalises on checkout according to
-  # .gitattributes, so this checks the attribute rather than the bytes.
-  if command -v git >/dev/null 2>&1 && [ -d "$LEOHOME/.git" ]; then
-    got=$(cd "$LEOHOME" && git check-attr eol -- leo.ps1 | sed 's/.*: //')
-    [ "$got" = "crlf" ] && ok "leo.ps1 will be checked out CRLF on every platform" \
-                        || bad "leo.ps1 eol is $got"
-  fi
-
-  # Real parse, when a real PowerShell is available. pwsh runs on macOS and
-  # Linux, so this is not Windows-only.
-  if command -v pwsh >/dev/null 2>&1; then
-    if pwsh -NoProfile -NonInteractive -Command "
-          \$ErrorActionPreference='Stop'
-          \$t=[System.Management.Automation.PSParser]::Tokenize(
-               (Get-Content -Raw '$PS1F'), [ref]\$null)
-          exit 0" >/dev/null 2>&1; then
-      ok "leo.ps1 parses under a real PowerShell"
-    else
-      bad "leo.ps1 does not parse under PowerShell"
-    fi
-
-    # The negative case that matters most: no bash anywhere. It must fail
-    # with a non-zero code and a message, not a stack trace.
-    out=$(LEO_BASH="$TMP/definitely-not-bash" pwsh -NoProfile -NonInteractive \
-            -File "$PS1F" --version 2>&1); rc=$?
-    if [ "$rc" -eq 0 ]; then
-      bad "leo.ps1 succeeded with a bogus LEO_BASH"
-    elif printf '%s' "$out" | grep -qi 'LEO_BASH'; then
-      ok "leo.ps1 refuses a bogus LEO_BASH and names it"
-    else
-      bad "leo.ps1 refused a bogus LEO_BASH without saying why: $out"
-    fi
-
-    # And the happy path, through the wrapper, on this machine's bash.
-    out=$(LEO_BASH="$(command -v bash)" pwsh -NoProfile -NonInteractive \
-            -File "$PS1F" --version 2>&1)
-    printf '%s' "$out" | grep -q "^leo " \
-      && ok "leo.ps1 runs leo end to end through a real PowerShell" \
-      || bad "leo.ps1 could not run leo: $out"
-  else
-    note "pwsh is not installed — leo.ps1 audited structurally, not executed"
-  fi
-fi
+# engines.node is a promise about what the shipped code may use. It is worth
+# asserting because the port is free to reach for newer syntax without it.
+grep -q '"node"' "$LEOHOME/package.json" \
+  && ok "package.json declares the node it needs" \
+  || bad "package.json declares no engines.node — nothing states the floor"
 
 # =========================================================================
 printf '\npaths with spaces — C:\\Program Files is not an edge case\n'
 # =========================================================================
-# Reproducible anywhere: an unquoted variable splits on a space identically on
-# every platform. These are the three paths that are routinely spaced on
-# Windows and almost never on a developer's Mac.
-
-mkdir -p "$TMP/Program Files/John Smith/my repo"
-cd "$TMP/Program Files/John Smith/my repo"
+SP2="$TMP/dir with spaces/repo name"
+mkdir -p "$SP2" && cd "$SP2"
 git init -q . && git config user.email t@t && git config user.name t
-echo one > f.txt && git add -A && git commit -qm init
+printf 'one\n' > "a file.txt"
+git add -A && git commit -qm base >/dev/null 2>&1
 
-"$LEO" init >/dev/null 2>&1 \
-  && ok "leo init works in a repository path containing spaces" \
-  || bad "leo init failed in a spaced repository path"
-printf 'TEST_CMD="true"\n' >> .leo/config
-"$LEO" session --mode coding >/dev/null 2>&1
-"$LEO" agents --auto >/dev/null 2>&1 \
-  && ok "leo agents --auto works in a spaced path" \
-  || bad "leo agents --auto failed in a spaced path"
-"$LEO" plan "spaced" >/dev/null 2>&1 \
-  && ok "leo plan works in a spaced path" \
-  || bad "leo plan failed in a spaced path"
-"$LEO" defer T1 "why" >/dev/null 2>&1 \
-  && ok "leo defer works in a spaced path" \
-  || bad "leo defer failed in a spaced path"
-[ -f SESSION.md ] && ok "SESSION.md is written in a spaced path" \
-                  || bad "SESSION.md missing in a spaced path"
+"$LEO" init >/dev/null 2>&1
+[ -f .leo/config ] && ok "leo init works under a path with spaces" \
+                   || bad "leo init failed under a path with spaces"
+"$LEO" plan "spaced plan" >/dev/null 2>&1
+[ -f .leo/plans/P1/plan.md ] && ok "leo plan works under a path with spaces" \
+                             || bad "leo plan failed under a path with spaces"
+printf 'two\n' >> "a file.txt"
+printf 'new\n' > "another file.txt"
+out=$("$LEO" scan 2>&1)
+printf '%s' "$out" | grep -qi 'wrote .leo/manifest.md' \
+  && ok "leo scan works under a path with spaces" \
+  || bad "leo scan failed under a path with spaces: $out"
+grep -q 'another file.txt' .leo/manifest.md \
+  && ok "a filename with a space survives into the manifest whole" \
+  || bad "a filename with a space was split"
 
-# An install directory with spaces: C:\Program Files\nodejs\node_modules\...
-# This is where tmpl_cat reads every template from.
-mkdir -p "$TMP/Program Files/nodejs"
-cp -R "$LEOHOME" "$TMP/Program Files/nodejs/leo-workflow" 2>/dev/null
-SPACED="$TMP/Program Files/nodejs/leo-workflow/leo"
-if [ -x "$SPACED" ]; then
-  "$SPACED" --version >/dev/null 2>&1 \
-    && ok "leo runs from an install path containing spaces" \
-    || bad "leo cannot run from a spaced install path"
-  out=$("$SPACED" task T2 2>&1 || true)
-  printf '%s' "$out" | grep -q 'task created\|Done when\|is later work\|belongs to' \
-    && ok "templates load from a spaced install path" \
-    || bad "template loading failed from a spaced install path: $out"
-else
-  note "could not copy the install to a spaced path"
-fi
-
-# A temp directory with spaces: C:\Users\John Smith\AppData\Local\Temp
-mkdir -p "$TMP/Temp Dir With Spaces"
-out=$(TMPDIR="$TMP/Temp Dir With Spaces" "$LEO" scan 2>&1 || true)
-printf '%s' "$out" | grep -qi 'wrote .leo/manifest.md\|nothing has changed' \
-  && ok "leo scan works with a TMPDIR containing spaces" \
-  || bad "leo scan failed with a spaced TMPDIR: $out"
-rm -f .leo/manifest.md
-TMPDIR="$TMP/Temp Dir With Spaces" "$LEO" check >/dev/null 2>&1 || true
-leaked=$(ls "$TMP/Temp Dir With Spaces" 2>/dev/null | grep -c 'leo-' || true)
-[ "${leaked:-0}" -eq 0 ] \
-  && ok "no temp files leaked into a spaced TMPDIR" \
-  || bad "$leaked temp file(s) left behind — Windows temp dirs are not swept"
-
+# A TMPDIR with a space in it, which is where the atomic write lands.
+mkdir -p "$TMP/tmp dir"
+out=$(TMPDIR="$TMP/tmp dir/" "$LEO" check 2>&1); rc=$?
+[ "$rc" = 0 ] || [ "$rc" = 1 ] \
+  && ok "leo check survives a TMPDIR containing a space (rc=$rc)" \
+  || bad "leo check broke on a spaced TMPDIR (rc=$rc)"
+[ -f SESSION.md ] && ok "SESSION.md is still written with a spaced TMPDIR" \
+                  || bad "SESSION.md was lost when TMPDIR had a space"
 cd "$LEOHOME"
 
-# Static half: a variable holding a path must be quoted. Unquoted, it splits.
-absent "no unquoted \$ROOT, \$LEO_HOME, \$LEO_DIR or \$TMPDIR in shipped code" \
-  '(\[ +-[a-z] +\$(ROOT|LEO_HOME|LEO_DIR|LEO_SELF|PLAN|MANIFEST|TASKS)[ )]|cd \$(ROOT|LEO_HOME)|(rm|mv|cp|cat|mkdir)( -[a-zA-Z]+)* \$(ROOT|LEO_HOME|LEO_DIR|PLAN|MANIFEST)([ /]|$))' \
-  $(shipped_sh)
-
-# =========================================================================
-printf '\nportability of the toolchain Git Bash actually provides\n'
-# =========================================================================
-
-# GNU-only flags. Each of these works on Linux and fails, or silently does
-# something else, on Git Bash and on macOS -- so the check protects two
-# platforms at once.
-absent "no 'sed -i' (not portable; Git Bash and BSD sed disagree on the suffix)" \
-  'sed +-i[ "'"'"']' $(shipped_sh)
-absent "no 'readlink -f' (absent on macOS, unreliable on MSYS)" \
-  'readlink +-f' $(shipped_sh)
-absent "no 'date -d' or 'date --date' (GNU only)" \
-  'date +(-d|--date)' $(shipped_sh)
-absent "no 'grep -P' (PCRE is not compiled into every grep)" \
-  'grep +(-[a-zA-Z]*P|--perl)' $(shipped_sh)
-absent "no 'stat -c' or 'stat -f' (the two are mutually exclusive)" \
-  'stat +-[cf]' $(shipped_sh)
-absent "no 'sort -V', 'xargs -r' or 'cp --parents' (GNU extensions)" \
-  '(sort +-[a-zA-Z]*V|xargs +-[a-zA-Z]*r|cp +--parents)' $(shipped_sh)
-absent "no 'realpath' (not in Git Bash by default)" \
-  '(^|[^a-z_])realpath ' $(shipped_sh)
-absent "no 'sha1sum' or 'md5sum' (named differently or absent per platform)" \
-  '(sha1sum|sha256sum|md5sum|shasum)' $(shipped_sh)
-
-# Hardcoded /tmp ignores TMPDIR, and on Git Bash /tmp is a different place
-# from the one Windows programs use.
-absent "no hardcoded /tmp (TMPDIR must be honoured)" \
-  'mktemp [^|]*"?/tmp/' $(shipped_sh)
-
-# Hardcoded Unix absolute paths that do not exist on Windows at all.
-absent "no hardcoded /usr, /bin or /etc paths" \
-  '"(/usr/|/bin/|/etc/)' $(shipped_sh)
-
-# The shebang must go through env: /bin/bash on Git Bash is not where bash is.
-bad_shebang=""
-for f in $(shipped_sh); do
-  head -1 "$f" | grep -q '^#!' || continue
-  head -1 "$f" | grep -q '^#!/usr/bin/env ' || bad_shebang="$bad_shebang ${f#"$LEOHOME"/}"
-done
-[ -z "$bad_shebang" ] && ok "every shebang goes through /usr/bin/env" \
-                      || bad "absolute-path shebangs:$bad_shebang"
-
-# The tools leo may use. Anything outside this list is a new dependency that
-# a Windows user may not have, and leo.ps1's preflight cannot warn about a
-# tool it does not know to check for.
-allow='git awk sed grep tr cut sort uniq wc head tail basename dirname find mktemp readlink date cksum chmod mv rm cp cat printf ls test expr'
-used=$(cat $(shipped_sh) \
-       | grep -oE '(\$\(|\| *|^ *|; *|&& *)(awk|sed|grep|tr|cut|sort|uniq|wc|head|tail|basename|dirname|find|mktemp|readlink|date|cksum|chmod|stat|uname|xargs|realpath|seq|tac|rev|nl|column|timeout|nproc) ' \
-       | grep -oE '[a-z]+ $' | tr -d ' ' | sort -u)
-outside=""
-for t in $used; do
-  printf '%s\n' $allow | grep -qx "$t" || outside="$outside $t"
-done
-[ -z "$outside" ] && ok "leo uses only tools Git for Windows ships ($(printf '%s' "$used" | tr '\n' ' ' | wc -w | tr -d ' ') distinct)" \
-                  || bad "tools outside the portable set:$outside"
-
-# leo.ps1's preflight must actually check the tools leo uses. A preflight that
-# tests for a shell and not for awk passes on a bash that cannot run leo.
-if [ -f "$PS1F" ]; then
-  m=""
-  for t in git awk sed grep mktemp cksum; do
-    grep -q "$t" "$PS1F" || m="$m $t"
-  done
-  [ -z "$m" ] && ok "leo.ps1's preflight covers the tools leo depends on" \
-              || bad "leo.ps1 does not preflight:$m"
-fi
+# The atomic write must not depend on TMPDIR at all: rename() is only atomic
+# within a filesystem, and %TEMP% on Windows is routinely on another volume.
+grep -q "path.dirname(dest)" "$LEOHOME/src/lib/fsx.js" \
+  && ok "writeAtomic stages beside the destination, not in TMPDIR" \
+  || bad "writeAtomic stages elsewhere — rename across volumes is not atomic"
 
 # =========================================================================
 printf '\nWindows filesystem rules a Unix tree can break\n'
 # =========================================================================
 
-# Reserved device names. A file called aux.md or con.sh cannot be created on
+# Reserved device names. A file called aux.md or con.js cannot be created on
 # Windows at all -- npm install fails while unpacking, with an error about a
 # path rather than about a name.
 reserved=""
@@ -477,25 +262,18 @@ done
 [ -z "$reserved" ] && ok "no file uses a reserved Windows device name" \
                    || bad "unpacking fails on Windows for:$reserved"
 
-# Characters that are legal in a Unix filename and illegal in a Windows one.
 illegal=$(cd "$LEOHOME" && git ls-files 2>/dev/null | grep -E '[<>:"|?*\\]' || true)
 [ -z "$illegal" ] && ok "no filename uses a character Windows forbids" \
                   || bad "illegal on Windows: $illegal"
 
-# Trailing dots and spaces are silently stripped by Windows, so two files can
-# collapse into one.
 trailing=$(cd "$LEOHOME" && git ls-files 2>/dev/null | grep -E '[ .]$' || true)
 [ -z "$trailing" ] && ok "no filename ends in a dot or a space" \
                    || bad "Windows would rename: $trailing"
 
-# Case-insensitive collisions. Two paths differing only in case are two files
-# on Linux and one on Windows and macOS -- whichever unpacks last wins.
 dupes=$(cd "$LEOHOME" && git ls-files 2>/dev/null | tr 'A-Z' 'a-z' | sort | uniq -d || true)
 [ -z "$dupes" ] && ok "no two tracked paths differ only in case" \
                 || bad "case-insensitive collision: $dupes"
 
-# Path length. MAX_PATH is 260 characters including the directory the user
-# installed into, and npm's global prefix is already deep.
 longest=$(cd "$LEOHOME" && git ls-files 2>/dev/null | awk '{ print length($0), $0 }' | sort -rn | head -1)
 len=${longest%% *}
 [ "${len:-0}" -le 120 ] \
@@ -503,299 +281,33 @@ len=${longest%% *}
   || bad "a path is ${len} chars: ${longest#* } — close to MAX_PATH once installed"
 
 # =========================================================================
-printf '\na bash that is not bash — what npm actually runs on Windows\n'
+printf '\nthe bundle\n'
 # =========================================================================
-
-# The bug this section exists for, reported from a real Windows machine:
-#
-#   PS> npm install -g leo-workflow
-#   PS> leo init
-#   C:/Users/.../leo-workflow/leo: line 15: syntax error: bad substitution
-#
-# Line 15 was `_self="${BASH_SOURCE[0]}"`, which is correct bash. The shell
-# quoting it was BusyBox ash wearing the name bash.exe, and "syntax error:
-# bad substitution" is its grammar, not bash's.
-#
-# The path there has nothing to do with leo.ps1. `npm install -g` reads the
-# shebang, writes its OWN leo.cmd and leo.ps1 into the global bin directory,
-# and runs the first `bash` on PATH -- the wrapper this repository ships is
-# never consulted. So the guard has to live in the bash script itself, which
-# means it has to be POSIX sh, which is the thing these tests check.
-
-guard_start=$(grep -n '^if \[ -z "\${BASH_VERSION:-}" \]; then$' "$LEO" | cut -d: -f1)
-# Comments only, excluded: the guard's own comment explains what BASH_SOURCE
-# is and would otherwise count as the thing it is there to come before.
-first_bashism=$(grep -nE 'BASH_SOURCE|set -euo' "$LEO" \
-  | grep -v '^[0-9]*: *#' | head -1 | cut -d: -f1)
-
-if [ -n "$guard_start" ] && [ "$guard_start" -lt "${first_bashism:-0}" ]; then
-  ok "leo checks it is running under bash before the first bash-only line"
-else
-  bad "leo reaches bash-only syntax before checking the shell is bash"
-fi
-
-# The guard is only useful if the shell that cannot run leo can still run the
-# guard. Anything bash-only inside it fails in exactly the way it is there to
-# prevent -- and fails at PARSE time, so the error names the guard instead.
-if [ -n "$guard_start" ]; then
-  guard_end=$(awk -v s="$guard_start" 'NR>=s && /^fi$/ {print NR; exit}' "$LEO")
-  bashisms=$(sed -n "${guard_start},${guard_end}p" "$LEO" \
-    | grep -nE '\[\[|\]\]|<<<|\$\{[A-Za-z_][A-Za-z0-9_]*\[|^\s*local |&>|\bfunction ' \
-    | grep -v '^[0-9]*: *#' || true)
-  if [ -z "$bashisms" ]; then
-    ok "the guard itself is POSIX sh — the shell it rescues can parse it"
-  else
-    bad "the guard uses bash-only syntax, so it cannot run where it is needed"
-    printf '%s\n' "$bashisms" | sed 's/^/        /' | head -5
-  fi
-fi
-
-# Run leo under every non-bash shell on this machine. dash is the closest
-# stand-in for BusyBox ash that a Unix box reliably has; zsh and ksh are here
-# because they fail differently -- zsh does not word-split unquoted
-# expansions, so an IFS-based candidate loop finds nothing there and reports
-# "no bash" on a machine full of bash.
-ran_any=0
-for sh in dash ksh zsh sh ash busybox; do
-  shpath=$(command -v "$sh" 2>/dev/null) || continue
-  [ -n "$shpath" ] || continue
-  # Skip a shell that IS bash (on many systems /bin/sh is bash): it exercises
-  # the fast path, not the guard.
-  if "$shpath" -c 'printf %s "${BASH_VERSION-}"' 2>/dev/null | grep -q .; then
-    continue
-  fi
-  ran_any=1
-  out=$("$shpath" "$LEO" --version 2>&1)
-  if printf '%s' "$out" | grep -q '^leo '; then
-    ok "$sh runs leo — the guard found a real bash and handed over"
-  else
-    bad "$sh cannot run leo: $out"
-  fi
-done
-[ "$ran_any" -eq 1 ] || note "no non-bash shell on this machine to run the guard against"
-
-# The reported failure, reproduced: a shell named bash, first on PATH, that
-# is not bash. This is what scoop's busybox package installs.
-FAKEBIN="$TMP/fakebin"
-mkdir -p "$FAKEBIN"
-impostor_shell=$(command -v dash 2>/dev/null || command -v ash 2>/dev/null || true)
-if [ -n "$impostor_shell" ]; then
-  # An impostor that answers --version convincingly, because the real ones do.
-  cat > "$FAKEBIN/bash" <<IMPOSTOR
-#!$impostor_shell
-case "\$1" in --version) echo "GNU bash, version 5.2.15(1)-release"; exit 0 ;; esac
-exec $impostor_shell "\$@"
-IMPOSTOR
-  chmod +x "$FAKEBIN/bash"
-
-  out=$(PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
+# A bundle is a single-file install somebody puts on a Windows PATH, so it
+# has to be a Node program too -- and it has to carry the templates, because
+# it reads nothing next to itself.
+if "$LEO" build --out "$TMP/bundle.js" >/dev/null 2>&1 && [ -f "$TMP/bundle.js" ]; then
+  head -1 "$TMP/bundle.js" | grep -q '^#!/usr/bin/env node$' \
+    && ok "the bundle asks for node" \
+    || bad "the bundle has no node shebang"
+  BR="$TMP/bundlerepo"; mkdir -p "$BR" && cd "$BR"
+  git init -q . && git config user.email t@t && git config user.name t
+  out=$(node "$TMP/bundle.js" --version 2>&1)
   printf '%s' "$out" | grep -q '^leo ' \
-    && ok "an impostor bash first on PATH is stepped over, not trusted" \
-    || bad "impostor bash on PATH breaks leo: $out"
-
-  # Specifically not the old bug.
-  printf '%s' "$out" | grep -qi 'bad substitution' \
-    && bad "still dies with 'bad substitution' under an impostor bash" \
-    || ok "no 'bad substitution' — the reported Windows failure is gone"
-
-  # --version is one word. The re-exec has to carry arguments through without
-  # re-splitting them, and leo takes free text: `leo plan "rate limiting"`.
-  R="$TMP/reexec-args"
-  mkdir -p "$R"
-  ( cd "$R" && git init -q . \
-      && git config user.email t@t && git config user.name t \
-      && PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" init >/dev/null 2>&1 \
-      && PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" plan "rate limiting" >/dev/null 2>&1 )
-  if grep -rq 'rate limiting' "$R/.leo/plans" 2>/dev/null; then
-    ok "a quoted multi-word argument survives the hand-over intact"
-  else
-    bad "the re-exec re-split its arguments — 'rate limiting' did not arrive whole"
-  fi
-
-  # LEO_BASH is the documented escape hatch; it has to outrank PATH.
-  out=$(LEO_BASH=$(command -v bash) PATH="$FAKEBIN:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
-  printf '%s' "$out" | grep -q '^leo ' \
-    && ok "LEO_BASH overrides the impostor on PATH" \
-    || bad "LEO_BASH did not win: $out"
+    && ok "the bundle runs from a directory containing nothing else" \
+    || bad "the bundle cannot run standalone: $out"
+  node "$TMP/bundle.js" init >/dev/null 2>&1
+  [ -f .leo/workflow.md ] \
+    && ok "the bundle carries its templates" \
+    || bad "the bundle install produced no templates — it is reading its source tree"
+  cd "$LEOHOME"
 else
-  note "no dash or ash here to impersonate bash with"
-fi
-
-# Two entries on a real Windows PATH are bash and are still the wrong answer,
-# and both normally sit ahead of Git Bash:
-#
-#   C:\Windows\system32\bash.exe                  the WSL launcher
-#   C:\Users\x\AppData\Local\Microsoft\WindowsApps\bash.exe   an alias for it
-#
-# The BASH_VERSION probe ACCEPTS these, because WSL's bash really is bash --
-# and then leo is handed a C:/Users/... path WSL cannot open. They have to be
-# excluded by path, and excluded before being run: probing one can boot a
-# distribution or open the Microsoft Store.
-#
-# So the assertion is not "leo still works" but "that file was never
-# executed", which is what the marker proves.
-if [ -n "$impostor_shell" ]; then
-  real_bash=$(command -v bash)
-  for trap_dir in System32 WindowsApps; do
-    T="$TMP/wsltrap/$trap_dir"
-    mkdir -p "$T"
-    marker="$TMP/wsltrap/$trap_dir.probed"
-    rm -f "$marker"
-    # A real, working bash -- so nothing but the path rule can reject it.
-    cat > "$T/bash.exe" <<TRAP
-#!/bin/sh
-echo probed >> "$marker"
-exec "$real_bash" "\$@"
-TRAP
-    chmod +x "$T/bash.exe"
-
-    out=$(PATH="$FAKEBIN:$T:$PATH" "$FAKEBIN/bash" "$LEO" --version 2>&1)
-    if [ -e "$marker" ]; then
-      bad "$trap_dir/bash.exe was executed — WSL gets probed, and may get used"
-    elif printf '%s' "$out" | grep -q '^leo '; then
-      ok "$trap_dir/bash.exe is skipped by path and never run"
-    else
-      bad "$trap_dir exclusion broke the search: $out"
-    fi
-  done
-else
-  note "no impostor shell — cannot test the WSL exclusion"
+  note "leo build produced no bundle to check"
 fi
 
 # =========================================================================
-# The npm entry point is a Node program, and that is the actual fix.
-#
-# Everything above this point is leo defending itself against an interpreter
-# somebody else picked. bin/leo.js is leo picking. npm's generated shims
-# invoke `node` -- which exists, because npm is what installed the package --
-# so no bash.exe on PATH gets a vote before leo has had one.
-#
-# The assertion that matters is structural: the moment `bin` points at a
-# shell script again, npm reads its shebang and the whole class of bug is
-# back. So it is checked directly.
-NODEBIN="$LEOHOME/bin/leo.js"
-binfield=$(sed -n 's/.*"leo": *"\([^"]*\)".*/\1/p' "$LEOHOME/package.json" | head -1)
-
-case "$binfield" in
-  *.js) ok "package.json bin points at a Node program, not a shell script" ;;
-  *) bad "bin is '$binfield' — npm will read its shebang and pick the interpreter" ;;
-esac
-
-if head -1 "$NODEBIN" 2>/dev/null | grep -q '^#!/usr/bin/env node$'; then
-  ok "bin/leo.js asks for node, so npm's shim calls node"
-else
-  bad "bin/leo.js has no node shebang — npm's shim will not call node"
-fi
-
-grep -q '"bin/"' "$LEOHOME/package.json" \
-  && ok "bin/ is in the files list, so it actually ships" \
-  || bad "bin/ is not in package.json files — the entry point would be missing"
-
-if command -v node >/dev/null 2>&1; then
-  out=$(node "$NODEBIN" --version 2>&1)
-  printf '%s' "$out" | grep -q '^leo ' \
-    && ok "the Node entry point runs leo" \
-    || bad "the Node entry point cannot run leo: $out"
-
-  # The same hostile PATH, against the entry point npm actually invokes.
-  if [ -n "$impostor_shell" ]; then
-    out=$(PATH="$FAKEBIN:$PATH" node "$NODEBIN" --version 2>&1)
-    printf '%s' "$out" | grep -q '^leo ' \
-      && ok "the Node entry point steps over an impostor bash on PATH" \
-      || bad "impostor bash defeats the Node entry point: $out"
-
-    for trap_dir in System32 WindowsApps; do
-      T="$TMP/wsltrap/$trap_dir"
-      marker="$TMP/wsltrap/$trap_dir.probed"
-      rm -f "$marker"
-      if [ -x "$T/bash.exe" ]; then
-        out=$(PATH="$FAKEBIN:$T:$PATH" node "$NODEBIN" --version 2>&1)
-        if [ -e "$marker" ]; then
-          bad "the Node entry point executed $trap_dir/bash.exe — WSL may get used"
-        elif printf '%s' "$out" | grep -q '^leo '; then
-          ok "the Node entry point skips $trap_dir/bash.exe without running it"
-        else
-          bad "the Node entry point broke on the $trap_dir case: $out"
-        fi
-      fi
-    done
-
-    out=$(LEO_BASH=$(command -v bash) PATH="$FAKEBIN:$PATH" node "$NODEBIN" --version 2>&1)
-    printf '%s' "$out" | grep -q '^leo ' \
-      && ok "LEO_BASH is honoured by the Node entry point" \
-      || bad "the Node entry point ignored LEO_BASH: $out"
-  fi
-
-  # Exit codes are leo's contract -- 0 success, 1 a check failed, 2 commit
-  # refused. A wrapper that returns its own status makes every `if (leo check)`
-  # in a build script wrong, and does it silently.
-  node "$NODEBIN" --version >/dev/null 2>&1
-  [ $? -eq 0 ] && ok "a successful command exits 0 through the wrapper" \
-               || bad "exit code not forwarded on success"
-  node "$NODEBIN" definitely-not-a-command >/dev/null 2>&1
-  [ $? -eq 1 ] && ok "a failing command exits 1 through the wrapper" \
-               || bad "exit code not forwarded on failure"
-
-  # Free text has to survive being handed from node to bash unsplit.
-  R2="$TMP/node-args"
-  mkdir -p "$R2"
-  ( cd "$R2" && git init -q . \
-      && git config user.email t@t && git config user.name t \
-      && node "$NODEBIN" init >/dev/null 2>&1 \
-      && node "$NODEBIN" plan "rate limiting" >/dev/null 2>&1 )
-  grep -rq 'rate limiting' "$R2/.leo/plans" 2>/dev/null \
-    && ok "a quoted multi-word argument survives node -> bash" \
-    || bad "the Node entry point re-split its arguments"
-
-  # LEO_SHOW_BASH is the support question -- "which bash did it pick?" -- and
-  # it has to go to stderr, because stdout is leo's output and a script
-  # reading it does not expect a diagnostic line in the middle.
-  err=$(LEO_SHOW_BASH=1 node "$NODEBIN" --version 2>&1 >/dev/null)
-  printf '%s' "$err" | grep -q 'using bash at' \
-    && ok "LEO_SHOW_BASH names the chosen bash, on stderr" \
-    || bad "LEO_SHOW_BASH printed nothing to stderr"
-else
-  note "no node here to test the npm entry point with"
-fi
-
-# A bundle is a single-file install, and somebody puts it on a Windows PATH.
-# It is generated by `leo build`, which writes its own preamble -- so the
-# guard being in the source tree says nothing about it being in the bundle.
-bundle="$TMP/bundle-leo"
-if "$LEO" build --out "$bundle" >/dev/null 2>&1; then
-  if [ -f "$bundle" ]; then
-    if [ -n "$impostor_shell" ]; then
-      out=$("$impostor_shell" "$bundle" --version 2>&1)
-      printf '%s' "$out" | grep -q '^leo ' \
-        && ok "the single-file bundle carries the guard too" \
-        || bad "the bundle drops the guard — it dies off bash: $out"
-    else
-      grep -q 'BASH_VERSION' "$bundle" \
-        && ok "the single-file bundle carries the guard too" \
-        || bad "the bundle drops the guard"
-    fi
-  else
-    note "leo build reported success but wrote no bundle"
-  fi
-else
-  note "leo build did not run here"
-fi
-
-# The probe is the whole trick. `bash --version` and `bash -c 'printf ready'`
-# both succeed against BusyBox, which is why the first version of the
-# PowerShell wrapper would have accepted it too.
-grep -q 'BASH_VERSION' "$LEOHOME/leo.ps1" \
-  && ok "leo.ps1 asks candidates for BASH_VERSION, not just whether they run" \
-  || bad "leo.ps1 accepts any shell that runs — BusyBox passes that test"
-
+printf '\ndocumentation — a Windows user must be told what they need\n'
 # =========================================================================
-printf '\ndocumentation — a Windows user must be told what to install\n'
-# =========================================================================
-
-# Anchored on a heading, not on the word. `grep -qi windows` passed against
-# the phrase "rate-limit windows" in an unrelated code sample -- a check that
-# loose is worse than none, because it reports success. Same failure the
-# COMMANDS-DOCUMENTED rule carries a paragraph about.
 for doc in README.md GUIDE.md; do
   if grep -qE '^#+ .*[Ww]indows|^\*\*Windows' "$LEOHOME/$doc"; then
     ok "$doc has a Windows section of its own"
@@ -803,9 +315,12 @@ for doc in README.md GUIDE.md; do
     bad "$doc has no Windows section — a Windows user has no idea what to install"
   fi
 done
-grep -qi 'git for windows\|git-scm.com/download/win\|winget' "$LEOHOME/README.md" \
-  && ok "README names how to get a bash on Windows" \
-  || bad "README does not say where Windows users get bash"
+
+# The install instruction changed with the runtime: naming Git for Windows
+# now would send people to install something leo does not use.
+grep -qi 'node' "$LEOHOME/README.md" \
+  && ok "README names the runtime leo actually needs" \
+  || bad "README does not say Windows users need node"
 
 printf '\n%s passed, %s failed, %s skipped\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]

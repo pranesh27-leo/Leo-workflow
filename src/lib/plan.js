@@ -292,6 +292,18 @@ function taskUngrilled(tasksDir, id) {
   return n;
 }
 
+
+// taskNextItem <task-id> — the first unticked box, as plain text. What the
+// reminder names when it says "build T1 — next: <this>".
+function taskNextItem(tasksDir, id) {
+  const body = readIfFile(taskFile(tasksDir, id));
+  if (body === null) return '';
+  for (const line of body.split('\n')) {
+    if (/^- \[ \]/.test(line)) return line.replace(/^- \[ \][ \t]*/, '');
+  }
+  return '';
+}
+
 module.exports = {
   planRows, planTasks, planHasTask, planRow,
   planTaskName, planTaskStatus, planTaskEst, planTaskFiles,
@@ -299,5 +311,5 @@ module.exports = {
   taskCurrent, planLater, planLaterWhy,
   taskFile, taskTodo,
   plansList, planPath, planNextId, taskNextN, taskOwner,
-  subtaskIds, subtaskState, taskLaterSubs, taskUngrilled,
+  subtaskIds, subtaskState, taskLaterSubs, taskUngrilled, taskNextItem,
 };

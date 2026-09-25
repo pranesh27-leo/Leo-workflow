@@ -34,7 +34,7 @@ done
 # And the commands those stages run. A stage naming a command that does not
 # exist is the same failure from the other side.
 for c in plan task scan check record commit review; do
-  [ -f "core/cmd/$c.sh" ] || missing="$missing cmd:$c"
+  [ -f "src/cmd/$c.js" ] || missing="$missing cmd:$c"
   grep -q "leo $c" "$w"   || missing="$missing workflow:$c"
 done
 

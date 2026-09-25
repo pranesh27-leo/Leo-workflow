@@ -24,8 +24,11 @@ function reviewCount(file, wantState, wantType) {
   for (const line of body.split('\n')) {
     if (!/^\| *[0-9]/.test(line)) continue;
     const c = line.split('|');
-    const s = (c[3] || '').replace(/[ \t`]/g, '');
-    const t = (c[7] || '').replace(/[ \t`]/g, '');
+    // awk's $3 and $7 are [2] and [6] here: $1 is the empty string before
+    // the leading pipe. Off by one compares the wrong columns and every
+    // "blocker/open" filter silently matches nothing.
+    const s = (c[2] || '').replace(/[ \t`]/g, '');
+    const t = (c[6] || '').replace(/[ \t`]/g, '');
     if (wantState && s !== wantState) continue;
     if (wantType && t !== wantType) continue;
     n++;

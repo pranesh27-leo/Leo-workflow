@@ -1,7 +1,7 @@
 # MUST NOT name a capability with no instruction file
 
 MUST: every name in `BUILTIN_CAPS` has a `templates/tools/<name>.md`, every
-file in `templates/tools/` names a capability, and `core/cmd/init.sh` installs
+file in `templates/tools/` names a capability, and `src/cmd/init.js` installs
 them.
 
 `leo session` prints `instructions: .leo/tools/<name>.md` for every enabled
@@ -22,7 +22,7 @@ that would have fixed it in one line had nowhere to live.
 ## Verify
 
 ```sh
-caps=$(sed -n 's/^BUILTIN_CAPS="\(.*\)"/\1/p' core/lib.sh)
+caps=$(node -e 'console.log(require("./src/lib/caps.js").BUILTIN_CAPS.join(" "))')
 bad=""
 
 # A capability with no doc: the pointer never prints.
@@ -38,7 +38,7 @@ for f in templates/tools/*.md; do
 done
 
 # And that init actually copies them, rather than leaving them in $LEO_HOME.
-grep -q 'tools/\$_cap.md' core/cmd/init.sh || bad="$bad init:does-not-install"
+grep -q "'tools/' + cap" src/cmd/init.js || bad="$bad init:does-not-install"
 
 [ -z "$bad" ] && exit 0
 echo "tool docs broken:$bad"

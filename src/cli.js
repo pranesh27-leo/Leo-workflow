@@ -14,11 +14,21 @@ const exitTrap = require('./lib/exit');
 
 const LEO_HOME = path.resolve(__dirname, '..');
 
+// The bundle seam. `leo build` emits one self-contained file that sets this
+// before requiring anything, with the templates and every module compiled in.
+// When it is absent leo is running from a source tree and reads its own
+// install from disk, exactly as before.
+//
+// One object rather than three globals: the guard below is `if (BUNDLE)`, so
+// a bundle that forgot to supply one of them fails loudly at build time
+// instead of silently falling back to a filesystem that is not there.
+const BUNDLE = global.__LEO_BUNDLE || null;
+
 // Everything leo reads out of its own install goes through here: the version
 // and the templates. A single-file build (`leo build`) replaces this module
 // with the content compiled in, so a bundle answers from itself and never
 // looks for a source tree that is not next to it.
-const assets = {
+const assets = BUNDLE ? BUNDLE.assets : {
   version() {
     return fs.readFileSync(path.join(LEO_HOME, 'VERSION'), 'utf8').trim();
   },
@@ -48,17 +58,21 @@ const assets = {
   },
 };
 
-function commandFile(name) {
-  // A command name comes from argv and is used to build a path, so it is
-  // checked rather than trusted: no separators, no dots, nothing that can
-  // climb out of src/cmd/ and run a file that is not a leo command.
+// loadCommand <name> — the module for a command, or null.
+//
+// A command name comes from argv and is used to build a path, so it is
+// checked rather than trusted: no separators, no dots, nothing that can climb
+// out of src/cmd/ and run a file that is not a leo command.
+function loadCommand(name) {
   if (!/^[a-z][a-z0-9-]*$/.test(name)) return null;
+  if (BUNDLE) return BUNDLE.commands[name] || null;
   const f = path.join(__dirname, 'cmd', name + '.js');
   try {
-    return fs.statSync(f).isFile() ? f : null;
+    if (!fs.statSync(f).isFile()) return null;
   } catch (e) {
     return null;
   }
+  return require(f);
 }
 
 function run(argv) {
@@ -71,13 +85,14 @@ function run(argv) {
     return 0;
   }
 
-  const file = commandFile(cmd);
-  if (!file) die('unknown command: ' + cmd + '  (try: leo help)');
+  const mod = loadCommand(cmd);
+  if (!mod) die('unknown command: ' + cmd + '  (try: leo help)');
 
   const ctx = makeCtx();
   ctx.leoHome = LEO_HOME;
   ctx.assets = assets;
   ctx.argv = rest;
+  ctx.bundle = BUNDLE;
 
   // SESSION.md is written from the exit trap, so it lands on every path out
   // of every command -- success, failure, and the interrupt in between.
@@ -85,7 +100,6 @@ function run(argv) {
   const { registerSessionDoc } = require('./lib/session');
   registerSessionDoc(ctx);
 
-  const mod = require(file);
   const rc = mod.run(ctx);
   return typeof rc === 'number' ? rc : 0;
 }

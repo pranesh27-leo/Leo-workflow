@@ -22,10 +22,11 @@ thing it checks is absent, which is the failure mode almost every rule in
 
 See `ARCHITECTURE.md`. The three paths worth knowing before anything else:
 
-- `core/lib.sh` — every shared fact. Read the section headers; it is organised
+- `src/lib/` — every shared fact, one file per concern. Read the header
+  comments; each is organised
   by noun (repo, plan registry, tasks, subtasks, records, reviews, session,
   tools, exit hooks, session doc).
-- `core/cmd/` — one file per command, no registry. The file's header comment
+- `src/cmd/` — one file per command, no registry. The file's header comment
   is the documentation.
 - `.leo/rules/` — ten rules, each with a shell check `leo check` runs. Every
   one of them was written after a real bug; the "Learned from" line names it.
@@ -38,7 +39,7 @@ See `ARCHITECTURE.md`. The three paths worth knowing before anything else:
   direct read works in a clone and breaks only for whoever vendored a
   single-file build, which is the one place nobody looks. `ASSET-SEAM` catches
   it.
-- **Never `trap ... EXIT`** outside `core/lib.sh` — use `leo_atexit_add`.
+- **Never `process.on('exit')`** outside `src/lib/exit.js` — use `atexitAdd`.
   Traps do not stack. `ONE-EXIT-TRAP` catches it.
 - **Never grow `AGENTS.md`** without reading `.leo/rules/ALWAYS-LOADED.md`
   first. Those bytes are re-read on every request of every session forever,

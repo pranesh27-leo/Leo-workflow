@@ -48,7 +48,11 @@ function manifestSummary(manifestFile) {
   for (const line of body.split('\n')) {
     if (!/^\| *[0-9NEW]/.test(line)) continue;
     n++;
-    const t = (line.split('|')[5] || '').replace(/[ \t]/g, '');
+    // Index 4, not 5: awk -F'|' numbers fields from 1 and $1 is the empty
+    // string before the leading pipe, so the manifest's Task column is $5
+    // there and [4] here. Getting this wrong reads the Why column instead,
+    // and every row with a reason but no task counts as reviewed.
+    const t = (line.split('|')[4] || '').replace(/[ \t]/g, '');
     if (t === '') blank++;
   }
   return n + ' hunk(s), ' + blank + ' still unreviewed';
@@ -60,13 +64,52 @@ function manifestSummary(manifestFile) {
 // not a gate.
 function nextStep(ctx) {
   if (!isFile(ctx.plan)) return 'grill the developer, then: leo plan "<name>"';
+
   const t = plan.taskCurrent(ctx.plan);
   if (t) {
     if (!isFile(plan.taskFile(ctx.tasks, t))) return 'leo task ' + t;
-    return 'work ' + t + ', then: leo scan';
+    const td = plan.taskTodo(ctx.tasks, t);
+    if (td) {
+      const done = parseInt(td.split('/')[0], 10);
+      const total = parseInt(td.split('/')[1], 10);
+      if (done < total) {
+        return 'build ' + t + ' — next: ' + plan.taskNextItem(ctx.tasks, t);
+      }
+      // Every box ticked but the plan still says otherwise. Without this the
+      // reminder jumped to `leo scan` and the remaining tasks were never
+      // built -- the status is what moves the work to the next task.
+      if (plan.planTaskStatus(ctx.plan, t) !== 'done') {
+        return 'set ' + t + ' to done in .leo/plan.md';
+      }
+    }
   }
+
+  // Every task either done or deferred, and nothing scanned. The change is
+  // not finished, it is parked -- and saying "leo scan" here would send the
+  // agent to build a manifest for work that was explicitly put off.
+  if (!t && !isFile(ctx.manifest)) {
+    const later = plan.planLater(ctx.plan);
+    if (later.length) {
+      return 'every task left is later work (' + later.join(' ') +
+        ') — leo resume <id>, or leo plan "<next change>"';
+    }
+  }
+
   if (!isFile(ctx.manifest)) return 'leo scan';
-  return 'leo check';
+
+  // A blank Task cell is a hunk nobody has accounted for yet, which is the
+  // manifest stage rather than the check stage.
+  let blank = 0;
+  for (const line of (readIfFile(ctx.manifest) || '').split('\n')) {
+    if (!/^\| *[0-9NEW]/.test(line)) continue;
+    if ((line.split('|')[4] || '').replace(/[ \t]/g, '') === '') blank++;
+  }
+  if (blank > 0) return 'fill the manifest — ' + blank + ' hunk(s) name no task';
+
+  // The cycle ends at the record, not at the commit. `leo commit` is still
+  // the developer's and still lands the change -- it is just no longer the
+  // thing that has to happen for this cycle to be finished.
+  return 'leo check, then leo record "<subject>" — the commit comes later, and is theirs';
 }
 
 function sessionDoc(ctx, adapters) {

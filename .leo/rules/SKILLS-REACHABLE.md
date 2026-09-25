@@ -26,12 +26,12 @@ for d in templates/skills/*/; do
   [ -f "$d/SKILL.md" ] || continue
   n=$(basename "$d")
   # init must install it somewhere a runtime reads, not just under .leo/.
-  grep -q "\.claude/skills/\$_s/SKILL.md\|\.claude/skills/$n/SKILL.md" \
-    core/cmd/init.sh || missing="$missing $n"
+  grep -q "\.claude', 'skills'\|\.claude/skills" \
+    src/cmd/init.js || missing="$missing $n"
 done
 
 # And the loop must name the directory, so nobody re-adds the manual step.
-grep -q '\.claude/skills' core/cmd/init.sh || missing="$missing init-installs-nothing"
+grep -q "\.claude', 'skills'" src/cmd/init.js || missing="$missing init-installs-nothing"
 
 [ -z "$missing" ] && exit 0
 echo "skills the runtime cannot see:$missing"

@@ -183,7 +183,13 @@ printf '%s' "$out" | grep -Eqi '[0-9]+ *%|tokens? saved|savings|reduction' \
 
 # leo has to work with none of these installed. That is the whole dependency
 # philosophy, and it is one assertion.
-out=$(PATH="/usr/bin:/bin" NO_COLOR=1 "$LEO" check 2>&1); rc=$?
+# node's own directory is kept on PATH, and only that. The assertion is that
+# leo needs none of the tools it can NAME -- serena, rtk, headroom and the
+# rest -- not that it runs without an interpreter; /usr/bin:/bin alone
+# happened to contain bash, so the shell build passed this by accident of
+# where its runtime lived rather than by being more self-sufficient.
+_noderoot=$(dirname "$(command -v node)")
+out=$(PATH="$_noderoot:/usr/bin:/bin" NO_COLOR=1 "$LEO" check 2>&1); rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] && ok "check runs with no integration on PATH" \
                               || bad "check runs with no integration on PATH (rc=$rc)"
 NO_COLOR=1 "$LEO" session --clear >/dev/null 2>&1
@@ -207,11 +213,13 @@ done
 
 printf 'a repository can add a tool leo has never heard of\n'
 mkdir -p .leo/integrations
-cat > .leo/integrations/zzdemo.sh <<'ADAPTER'
-zzdemo_present() { command -v zzdemo-not-real >/dev/null 2>&1; }
-zzdemo_label()   { printf 'ZZ Demo'; }
-zzdemo_hint()    { say "not a real tool"; }
-zzdemo_default() { case "$1" in review) printf 'on' ;; *) printf 'off' ;; esac; }
+cat > .leo/integrations/zzdemo.js <<'ADAPTER'
+// A repository's own adapter. Same contract as the ones leo ships with:
+// present/label/hint, plus an optional per-mode default.
+exports.present = () => false;
+exports.label   = () => 'ZZ Demo';
+exports.hint    = () => ['not a real tool'];
+exports.default = (mode) => (mode === 'review' ? 'on' : 'off');
 ADAPTER
 out=$(NO_COLOR=1 "$LEO" session --mode review 2>&1)
 has "$out" "extensions" "an extension gets its own heading"
@@ -228,11 +236,11 @@ has "$out" "ZZ Demo  *ON  *(you)" "an extension can be overridden like a built-i
 # thing that changes between the two runs is whether it parses. Taking it
 # before the file existed would compare "file exists" against "file does not
 # exist", and the manifest coverage check would legitimately differ.
-printf 'zzbroken_present() { return 1; }\nzzbroken_hint() { say "x"; }\n' > .leo/integrations/zzbroken.sh
+printf 'exports.present = () => false;\nexports.hint = () => ["x"];\n' > .leo/integrations/zzbroken.js
 a=$(NO_COLOR=1 "$LEO" check 2>&1); arc=$?
-printf 'zzbroken_present() { unbalanced "\n' > .leo/integrations/zzbroken.sh
+printf 'exports.present = () => { unbalanced("\n' > .leo/integrations/zzbroken.js
 out=$(NO_COLOR=1 "$LEO" session 2>&1)
-has "$out" "does not parse" "a broken adapter is reported"
+has "$out" "does not load" "a broken adapter is reported"
 printf '%s' "$out" | grep -q 'zzbroken' && ok "a broken adapter is named" || bad "a broken adapter is named"
 
 # Not "check still exits 0" -- "check does exactly what it did before". The
@@ -243,7 +251,7 @@ b=$(NO_COLOR=1 "$LEO" check 2>&1); brc=$?
 # file in the repository, so it legitimately moves the line count. Everything
 # else -- rules, manifest, tests, verdict -- must be identical.
 a=$(printf '%s\n' "$a" | grep -v 'actual')
-b=$(printf '%s\n' "$b" | grep -v 'does not parse' | grep -v 'actual')
+b=$(printf '%s\n' "$b" | grep -v 'does not load' | grep -v 'actual')
 if [ "$arc" = "$brc" ] && [ "$a" = "$b" ]; then
   ok "a broken adapter changes nothing about check"
 else
@@ -491,7 +499,7 @@ out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
 has "$out" "instructions: .leo/tools/tdd.md" "an enabled installed tool points at its doc"
 # An extension with no doc must print nothing, not a path to a missing file.
 mkdir -p .leo/integrations
-printf 'zzdemo_present() { return 1; }\nzzdemo_hint() { say "x"; }\nzzdemo_default() { printf on; }\n' > .leo/integrations/zzdemo.sh
+printf 'exports.present = () => false;\nexports.hint = () => ["x"];\nexports.default = () => "on";\n' > .leo/integrations/zzdemo.js
 out=$(NO_COLOR=1 "$LEO" session --mode coding 2>&1)
 printf '%s' "$out" | grep -q 'tools/zzdemo.md' \
   && bad "a capability with no doc points at nothing" \
@@ -619,12 +627,12 @@ mkdir -p "$IST" && cd "$IST"
 printf '\n\n' > blanks.py
 printf 'x = 1\n' > real.py
 printf '\000\001\002' > bin.dat
-( LEO_HOME="$LEOHOME"; export LEO_HOME
-  . "$LEOHOME/core/lib.sh" >/dev/null 2>&1
-  is_text empty.py  && echo "empty:text"  || echo "empty:binary"
-  is_text blanks.py && echo "blanks:text" || echo "blanks:binary"
-  is_text real.py   && echo "real:text"   || echo "real:binary"
-  is_text bin.dat   && echo "bin:text"    || echo "bin:binary" ) > "$TMP/istext.out" 2>/dev/null
+node -e '
+  var isText = require(process.argv[1] + "/src/lib/fsx.js").isText;
+  ["empty.py", "blanks.py", "real.py", "bin.dat"].forEach(function (f) {
+    console.log(f.replace(/\..*/, "") + ":" + (isText(f) ? "text" : "binary"));
+  });
+' "$LEOHOME" > "$TMP/istext.out" 2>/dev/null
 o=$(cat "$TMP/istext.out")
 has "$o" "empty:text"  "an empty file is text"
 has "$o" "blanks:text" "a file of blank lines is text"
@@ -632,24 +640,21 @@ has "$o" "real:text"   "an ordinary file is text"
 has "$o" "bin:binary"  "a file with NULs is still binary"
 cd "$TMP/repo"
 
-printf 'lines_changed batches untracked files instead of spawning per file\n'
-# Found on a real Windows machine: `leo check`, and every command's exit
-# trap, went from instant to a multi-minute hang against a large untracked
-# tree. The old lines_changed() ran `grep -Iq` then `wc -l` once PER
-# untracked file in a plain loop -- ~8s against 3000 files on a fast Mac,
-# because process creation is not free even there, and dramatically more on
-# Windows, where it crosses into Win32 through MSYS's emulation layer.
+printf 'counting lines spawns no process per file\n'
+# Found on a real Windows machine: `leo check`, and every command's exit trap,
+# went from instant to a multi-minute hang against a large untracked tree. The
+# shell ran `grep -Iq` then `wc -l` once PER untracked file -- ~8s against 3000
+# files on a fast Mac, and far worse on Windows, where every process creation
+# crosses into Win32 through an emulation layer.
 #
-# The count, not the clock: a timing assertion is flaky across machines and
-# load. Counting how many times grep and wc actually run is not -- it proves
-# batching happened rather than proving this particular run was fast.
+# The port removes the mechanism rather than tuning it: both questions are
+# answered in-process now. So the assertion tightens from "batched" to "none
+# at all" -- grep and wc are shimmed on PATH and must never fire.
 LCB="$TMP/lcbatch"
 mkdir -p "$LCB" && cd "$LCB"
 git init -q . && git config user.email t@t && git config user.name t
 : > base.txt && git add -A && git commit -qm base >/dev/null
 
-# 120 files: more than two batches at the batch size lib.sh uses (50), so a
-# fix that only handles "everything fits in one call" would not be caught.
 for i in $(seq 1 120); do printf 'one line %s\n' "$i" > "f$i.txt"; done
 mkdir -p "dir with space"
 printf 'a\nb\nc\n' > "dir with space/file with spaces.txt"
@@ -672,25 +677,18 @@ exec "$_real_wc" "\$@"
 SPY
 chmod +x "$SPIES/grep" "$SPIES/wc"
 
-out=$(
-  PATH="$SPIES:$PATH" LEO_HOME="$LEOHOME"
-  export PATH LEO_HOME
-  . "$LEOHOME/core/lib.sh" >/dev/null 2>&1
-  lines_changed HEAD
-)
+out=$(PATH="$SPIES:$PATH" node -e '
+  console.log(require(process.argv[1] + "/src/lib/repo.js").linesChanged("HEAD"));
+' "$LEOHOME" 2>/dev/null)
 n_calls=$(wc -l < "$CALLS" | tr -d ' ')
 
 [ "$out" = "123" ] \
-  && ok "lines_changed counts 121 files' worth of lines correctly (123)" \
-  || bad "lines_changed got the count wrong: $out (expected 123)"
+  && ok "linesChanged counts 121 files' worth of lines correctly (123)" \
+  || bad "linesChanged got the count wrong: $out (expected 123)"
 
-# Unbatched: 121 files means >=121 grep calls and >=121 wc calls (not_bookkeeping
-# adds exactly one grep on top, once, regardless of file count). Batched at 50
-# per call: 3 batches, at most 2 spawns each, plus that one grep -- 7 at most.
-# 30 is a generous line between "batched" and "one call per file".
-[ "$n_calls" -le 30 ] \
-  && ok "grep+wc ran $n_calls times for 121 files, not one pair each" \
-  || bad "grep+wc ran $n_calls times for 121 files -- looks unbatched"
+[ "${n_calls:-0}" -eq 0 ] \
+  && ok "counting 121 files spawned no grep and no wc" \
+  || bad "grep+wc ran $n_calls times for 121 files — the per-file spawn is back"
 
 cd "$TMP/repo"
 
@@ -707,17 +705,17 @@ NO_COLOR=1 "$LEO" init >/dev/null 2>&1
 printf 'TEST_CMD="true"\n' >> .leo/config
 # Two fixtures: one the agent invokes, one that is simply in effect. Both
 # report themselves installed, which is what lets the switch be tested at all.
-cat > .leo/integrations/pretend.sh <<'ADAPTER'
-pretend_present() { return 0; }
-pretend_hint()    { say "nothing to install"; }
-pretend_kind()    { printf 'invoked'; }
-pretend_label()   { printf 'Pretend'; }
+cat > .leo/integrations/pretend.js <<'ADAPTER'
+exports.present = () => true;
+exports.hint    = () => ['nothing to install'];
+exports.kind    = () => 'invoked';
+exports.label   = () => 'Pretend';
 ADAPTER
-cat > .leo/integrations/ambient.sh <<'ADAPTER'
-ambient_present() { return 0; }
-ambient_hint()    { say "nothing to install"; }
-ambient_kind()    { printf 'ambient'; }
-ambient_label()   { printf 'Ambient'; }
+cat > .leo/integrations/ambient.js <<'ADAPTER'
+exports.present = () => true;
+exports.hint    = () => ['nothing to install'];
+exports.kind    = () => 'ambient';
+exports.label   = () => 'Ambient';
 ADAPTER
 NO_COLOR=1 "$LEO" session --mode coding --pretend on --ambient on >/dev/null 2>&1
 git add -A && git commit -qm adopt >/dev/null 2>&1
@@ -1069,7 +1067,7 @@ has "$out" "COMMANDS" "the bundle prints help"
 # One comment from lib.sh and one from a command, so the assertion covers both
 # things the build compiles in. Not the entrypoint's -- the bundle replaces
 # that file with a preamble of its own, on purpose.
-for c in "in one file you can read in a minute" "The plan is the yardstick"; do
+for c in "A plan is a markdown document a human reads and edits" "The plan is the yardstick"; do
   grep -q "$c" "$BUNDLE" && ok "the bundle keeps its comments ($c)" \
                          || bad "the bundle dropped a comment ($c)"
 done
@@ -1115,11 +1113,13 @@ has "$out" "Serena" "the bundle knows its built-in adapters"
 # ...and still loads the ones a repository adds, which is the half of adapter
 # loading a bundle is most likely to drop on the floor.
 mkdir -p .leo/integrations
-cat > .leo/integrations/zzdemo.sh <<'ADAPTER'
-zzdemo_present() { command -v zzdemo-not-real >/dev/null 2>&1; }
-zzdemo_label()   { printf 'ZZ Demo'; }
-zzdemo_hint()    { say "not a real tool"; }
-zzdemo_default() { case "$1" in review) printf 'on' ;; *) printf 'off' ;; esac; }
+cat > .leo/integrations/zzdemo.js <<'ADAPTER'
+// A repository's own adapter. Same contract as the ones leo ships with:
+// present/label/hint, plus an optional per-mode default.
+exports.present = () => false;
+exports.label   = () => 'ZZ Demo';
+exports.hint    = () => ['not a real tool'];
+exports.default = (mode) => (mode === 'review' ? 'on' : 'off');
 ADAPTER
 out=$(NO_COLOR=1 "$BUNDLE" session --mode review 2>&1)
 has "$out" "ZZ Demo  *ON" "the bundle loads a repository's own adapter"
@@ -1222,7 +1222,7 @@ out=$(ANTHROPIC_API_KEY= NO_COLOR=1 bash "$LEOHOME/t/bench.sh" 2>&1); rc=$?
 [ "$rc" = 0 ] && ok "the benchmark exits 0 with no key" || bad "benchmark exit was $rc"
 has "$out" "ANTHROPIC_API_KEY" "the benchmark says why it skipped"
 # It costs money and needs the network. Nothing may run it as a side effect.
-grep -q 'bench' "$LEOHOME/core/cmd/check.sh" \
+grep -q 'bench' "$LEOHOME/src/cmd/check.js" \
   && bad "leo check never runs the benchmark" || ok "leo check never runs the benchmark"
 
 # The session benchmark reads transcripts Claude Code already wrote. No key, no
@@ -1298,11 +1298,11 @@ printf 'leo says when to end the session, where it can actually tell\n'
 # Quadratic cost: every turn re-reads every turn before it, so the cheapest
 # thing leo can do is tell you to stop. It fires where leo can see agent-
 # agnostically -- a commit landing -- not on a turn count it cannot observe.
-has "$(cat "$LEOHOME/core/cmd/commit.sh")" "fresh session" \
+has "$(cat "$LEOHOME/src/cmd/commit.js")" "fresh session" \
   "commit suggests a fresh session for the next task"
 # ...and it must not have been done by reading Claude Code's transcripts.
-grep -qE 'CLAUDE_CODE_SESSION_ID|\.claude/projects' "$LEOHOME/core/cmd/commit.sh" \
-     "$LEOHOME/core/cmd/check.sh" "$LEOHOME/core/lib.sh" "$LEOHOME/core/cmd/task.sh" \
+grep -qE 'CLAUDE_CODE_SESSION_ID|\.claude/projects' "$LEOHOME/src/cmd/commit.js" \
+     "$LEOHOME/src/cmd/check.js" "$LEOHOME/src/lib/session.js" "$LEOHOME/src/cmd/task.js" \
   && bad "leo stays agent-agnostic" || ok "leo stays agent-agnostic"
 
 # The instruction is short and must be seen; the reasoning is long and must not
@@ -1321,7 +1321,7 @@ printf 'the grill has a floor and no ceiling\n'
 # and it stops on shared understanding rather than on a count. Any number leo
 # states here is leo overriding the thing it vendored.
 for f in templates/workflow.md templates/AGENTS.md templates/task.md \
-         core/cmd/check.sh README.md; do
+         src/cmd/check.js README.md; do
   # Line breaks removed before the grep. grep is line-based, prose is wrapped,
   # and "a one-line fix earns one\nquestion" sat in templates/workflow.md for
   # three releases matching none of these patterns -- a cap on questions,
@@ -1338,7 +1338,7 @@ done
 # The floor is not a number, and it must survive: zero questions is not a grill.
 has "$(cat "$LEOHOME/templates/workflow.md")" "shared understanding" \
   "the workflow names the real stop condition"
-has "$(cat "$LEOHOME/core/cmd/check.sh")" "ungrilled" \
+has "$(cat "$LEOHOME/src/cmd/check.js")" "ungrilled" \
   "check still fails on an ungrilled task"
 
 # The vendored skill is somebody else's file. Editing it to make a point about

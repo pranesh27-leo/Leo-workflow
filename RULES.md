@@ -21,7 +21,7 @@ incident behind it is a preference, and preferences belong in a linter.
   `.leo/rules/COMMANDS-DOCUMENTED.md`
 - **FLOW-DOCUMENTED** — MUST NOT let a stage exist that the workflow does not name
   `.leo/rules/FLOW-DOCUMENTED.md`
-- **ONE-EXIT-TRAP** — MUST NOT install an EXIT trap outside core/lib.sh
+- **ONE-EXIT-TRAP** — MUST NOT install an exit handler outside src/lib/exit.js
   `.leo/rules/ONE-EXIT-TRAP.md`
 - **REVIEW-TRACKED** — MUST NOT gitignore the reviews
   `.leo/rules/REVIEW-TRACKED.md`

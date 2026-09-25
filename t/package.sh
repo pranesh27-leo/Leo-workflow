@@ -2,7 +2,7 @@
 # Packaging test: would `npm publish` produce a leo that actually runs?
 #
 # The failure this exists for is specific and silent. leo is a shell script
-# that reads its own `core/` and `templates/` at runtime, and npm ships only
+# that reads its own `src/` and `templates/` at runtime, and npm ships only
 # what `files` in package.json lists. Drop a new directory into the source tree,
 # forget the manifest entry, and every test here passes, `npm pack` succeeds,
 # and the published package dies on `leo init` in somebody else's repository
@@ -95,9 +95,9 @@ fi
 #    This assertion used to be the exact opposite: it required an os list,
 #    on the reasoning that leo is bash and refusing at install time is more
 #    honest than failing at first run. That reasoning was sound and the
-#    conclusion was wrong, because the premise was wrong -- Windows has bash.
-#    Git for Windows ships the one leo wants, npm writes a .cmd and a .ps1
-#    shim that find it, and leo.ps1 preflights it. An os list without win32
+#    conclusion was wrong, because the premise was wrong. It is wrong twice
+#    over now: leo is a Node program, npm writes a .cmd and a .ps1 shim that
+#    invoke node, and node is what installed the package. An os list without win32
 #    makes `npm install -g leo-workflow` fail outright on Windows, and the
 #    user never gets far enough to discover any of that.
 #
@@ -115,9 +115,14 @@ else
   ok "package.json places no os restriction on installing"
 fi
 
-# 5. The Windows entry point and the line-ending policy both have to ship, or
-#    a Windows user gets a package that installs and cannot run.
-for f in leo.ps1 .gitattributes; do
+# 5. The line-ending policy has to ship.
+#
+#    leo.ps1 used to be checked here beside it, and is gone with the bash it
+#    wrapped: there is no interpreter to hunt for any more, so npm's own
+#    generated .cmd and .ps1 shims invoke node and that is the whole Windows
+#    entry point. .gitattributes stays because CRLF is still a thing a
+#    Windows checkout does to files leo reads -- .leo/config among them.
+for f in .gitattributes; do
   grep -q "\"$f\"" package.json \
     && ok "$f is in the published files list" \
     || bad "$f is not published — Windows users never receive it"
@@ -146,16 +151,18 @@ if [ -z "$listing" ]; then
 else
   ok "npm pack produced a listing ($(printf '%s\n' "$listing" | grep -c .) entries)"
 
-  # Every command. This is the check that catches the real bug: a new file in
-  # core/cmd/ is a new leo command with no registry entry anywhere, and the
+  # Every module. This is the check that catches the real bug: a new file in
+  # src/cmd/ is a new leo command with no registry entry anywhere, and the
   # only thing standing between it and a published package that does not have
-  # it is this loop.
+  # it is this loop. src/lib/ and src/integrations/ are here for the same
+  # reason -- a command that ships without the library it requires fails at
+  # `require`, on the user's machine, on first run.
   miss=""
-  for f in core/cmd/*.sh core/integrations/*.sh core/lib.sh; do
+  for f in src/*.js src/cmd/*.js src/lib/*.js src/integrations/*.js; do
     printf '%s\n' "$listing" | grep -q "$f" || miss="$miss $f"
   done
-  [ -z "$miss" ] && ok "every core file is in the package" \
-                 || bad "core files npm would drop:$miss"
+  [ -z "$miss" ] && ok "every source file is in the package" \
+                 || bad "source files npm would drop:$miss"
 
   # Every template. `leo init` and `leo task` cannot substitute a template
   # they cannot read, and a missing one is a repository set up wrong rather
