@@ -44,11 +44,13 @@ for f in AGENTS.md \
          .agents/skills/ponytail/SKILL.md \
          .agents/skills/caveman/SKILL.md \
          .agents/skills/humanizer/SKILL.md \
+         .agents/skills/feynman/SKILL.md \
          .claude/skills/grill-me/SKILL.md \
          .claude/skills/tdd/SKILL.md \
          .claude/skills/ponytail/SKILL.md \
          .claude/skills/caveman/SKILL.md \
-         .claude/skills/humanizer/SKILL.md; do
+         .claude/skills/humanizer/SKILL.md \
+         .claude/skills/feynman/SKILL.md; do
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
 done
 
@@ -161,7 +163,7 @@ for stage in grill plan task subtask build manifest commit brief findings close;
 done
 
 # The mode table and the skills that exist have to be the same set.
-for skill in grill-me tdd ponytail caveman humanizer; do
+for skill in grill-me tdd ponytail caveman humanizer feynman; do
   grep -qi "$skill" "$R/AGENTS.md" \
     && ok "AGENTS.md maps $skill to modes" \
     || bad "$skill ships but AGENTS.md never says when to use it"

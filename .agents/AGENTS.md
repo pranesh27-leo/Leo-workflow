@@ -100,21 +100,25 @@ twice.
 ## Skills
 
 Every one of these is ON or OFF for the mode. There is no third state and
-nothing to invoke: if the table says ON, it applies to this reply.
+nothing to invoke: if the table says ON, it applies to this reply. The one
+exception is feynman, which is also **on request** in every mode: the moment
+the developer says they do not understand something, it applies to that reply.
 
-| mode | grill | tdd | ponytail | caveman | humanizer | graph | rtk |
-|---|---|---|---|---|---|---|---|
-| **coding** | every task + subtask | per `TDD:` | ON | ON | OFF | ON | ON |
-| **debugging** | every task + subtask | per `TDD:` | OFF | OFF | OFF | ON | ON |
-| **learning** | before you build | OFF | OFF | OFF | **ON** | ON | ON |
-| **review** | not used | OFF | OFF | ON | **ON** | ON | ON |
-| **exploration** | before you build | OFF | OFF | OFF | OFF | ON | ON |
+| mode | grill | tdd | ponytail | caveman | humanizer | feynman | graph | rtk |
+|---|---|---|---|---|---|---|---|---|
+| **coding** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON |
+| **debugging** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON |
+| **learning** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON |
+| **review** | not used | OFF | OFF | ON | **ON** | on request | ON | ON |
+| **exploration** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON |
 
 OFF is the developer's decision, not a default to work around. Caveman is OFF
 in debugging and learning because it cuts, and in those modes the line that
 looks like noise is routinely the line that mattered. Ponytail is ON only in
 coding, because it governs code you are writing. Humanizer is ON where the
-output is prose worth editing and OFF where it is mostly diffs.
+output is prose worth editing and OFF where it is mostly diffs. Feynman is ON
+in learning because understanding is the whole job there; elsewhere it waits
+to be asked, because an explanation nobody wanted is noise on a build.
 
 **What each one means, in force the moment the table says ON:**
 
@@ -124,6 +128,7 @@ output is prose worth editing and OFF where it is mostly diffs.
 | **tdd** | Write the test, run it, **watch it fail for the reason you expect**, then implement. Report which steps you actually did. | `.agents/skills/tdd/SKILL.md` |
 | **ponytail** | Climb the ladder before writing: does it need to exist, is it already here, does the stdlib do it, can it be one line. Stop at the first rung that holds. | `.agents/skills/ponytail/SKILL.md` |
 | **caveman** | Cut what was not asked for: no preamble, no restating the request, no narrating, no closing offers. Never compress code, output, or bad news. | `.agents/skills/caveman/SKILL.md` |
+| **feynman** | Explaining something not understood: the thing itself before its name, the mechanism step by step from what they already know, one worked example with real values, at most one analogy and where it breaks, the name last. Simplify, never falsify; say what is unknown. | `.agents/skills/feynman/SKILL.md` |
 | **humanizer** | No staged openers, no not-X-but-Y, no forced triads, no one-line closers, no inflation. Every sentence carries something new. | `.agents/skills/humanizer/SKILL.md` |
 
 The line is enough to act on; the file is the authority when you need the

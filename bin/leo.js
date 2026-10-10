@@ -32,9 +32,9 @@ const SRC = path.join(HOME, '.agents');
 // Code reads skills from that path and nowhere else, and a skill nobody's
 // runtime loads is the bug this vendoring exists to fix. Any other runtime
 // is pointed at .agents/skills/, which is the canonical copy.
-const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer'];
+const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman'];
 
-// Three of the five are somebody else's work, vendored under their own
+// Three of the six are somebody else's work, vendored under their own
 // licence, and the licence travels in the same directory as the file it
 // covers -- not one LICENSE at the top for all of them, which would leave a
 // reader guessing which terms applied to what.

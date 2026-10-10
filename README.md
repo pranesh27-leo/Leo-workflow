@@ -21,11 +21,12 @@ runs during your work, nothing watches, nothing to keep installed.
 | `.agents/skills/ponytail/` | what you build — *vendored, MIT* |
 | `.agents/skills/caveman/` | what you say — cut what was not asked for |
 | `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
+| `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
 | `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
 | `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
-| `.claude/skills/*/` | the same five skills, where Claude Code reads them |
+| `.claude/skills/*/` | the same six skills, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
@@ -127,7 +128,7 @@ The agent is told never to install them — it shows you the command.
 
 MIT.
 
-Three of the five skills are other people's work. Each is vendored rather
+Three of the six skills are other people's work. Each is vendored rather
 than referenced — a stage whose definition lives on someone else's default
 branch can change under you between two sessions — and each ships the licence
 it is used under, in its own directory.
@@ -144,4 +145,5 @@ instruction exactly one runtime can follow. They are one file here, named for
 the trigger, so any runtime can read it. The interview method is his,
 unchanged.
 
-`tdd` and `caveman` are leo's own.
+`tdd`, `caveman` and `feynman` are leo's own. `feynman` quotes Feynman only
+where the source is verified, and names the quotes commonly misattributed to him.
