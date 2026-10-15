@@ -1,93 +1,149 @@
 # leo
 
-A workflow for working with coding agents, in ~500 lines of POSIX shell.
-
-It exists to answer one question: **when 500 lines arrive that you did not
-type, how do you know they are the right 500 lines — and how do you debug them
-at 3am without an AI?**
-
-## The five ideas
-
-1. **The agent grills you before it plans.** It asks questions in rounds — each
-   with a recommended default — and stops after each round instead of running
-   ahead. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
-   tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
-   is specific enough to measure against. A vague plan justifies anything.
-2. **A manifest makes a diff reviewable.** `leo scan` turns the diff into one
-   row per hunk. The agent fills in *which task this serves*, *why*, and *what
-   breaks if it is deleted*. You read ~20 rows and spot-check the risky ones.
-   `leo check` then rejects any task ID the plan never declared, so the agent
-   cannot invent a justification, and reports the unwanted work in lines:
-   `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
-   500 lines did I not ask for?"
-3. **You commit, not the agent.** `leo commit` refuses to run without a human
-   at a terminal. The agent runs `leo check`, shows you the command it would
-   run, and stops — having just written the code, it is the last party that
-   should decide the code is done.
-4. **The record belongs in the commit message.** Not in git notes, not in a side
-   file, not in a chat log. `git blame` → `git show` and you get the reason a
-   line exists, from git alone, forever.
-5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
-   that exits non-zero when a known mistake reappears. It runs on every
-   `leo check`, costs no tokens, and outlives the session that learned it.
-
-**New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
-complete change, with real output at every step.
-
-## Install
+A markdown agent harness. The loop, the skills, and the instructions for
+each stage — as files your agent reads, in your repository.
 
 ```sh
-ln -s "$PWD/leo" /usr/local/bin/leo
-cd ~/your-repo && leo init
+npx leo-workflow init
 ```
 
-## Use
+That is the whole installation. It copies thirteen files and exits. Nothing
+runs during your work, nothing watches, nothing to keep installed.
 
-```sh
-leo plan "rate limiting"        # after the agent has grilled you
-                                # ...the agent builds it, one task at a time
-leo scan                        # split the diff into hunks
-                                # ...the agent fills in Task / Why / If deleted
-leo check                       # rules, unreviewed hunks, budget, tests
-leo commit "api: rate limit"    # you run this one. It refuses without a tty.
-```
+## What you get
 
-## Picking up a change days later
+| file | what it is |
+|---|---|
+| `AGENTS.md` | the one file every agent loads |
+| `.agents/leo.md` | every stage: the git command that shows the truth, and the file you write |
+| `.agents/skills/grill-me/` | interview before building — *Matt Pocock's, adapted* |
+| `.agents/skills/tdd/` | test first, and watch it fail |
+| `.agents/skills/ponytail/` | what you build — *vendored, MIT* |
+| `.agents/skills/caveman/` | what you say — cut what was not asked for |
+| `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
+| `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
+| `.agents/tools/graph.md` | code graph — call chains, blast radius |
+| `.agents/tools/rtk.md` | terminal output reduction |
+| `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
+| `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
+| `.claude/skills/*/` | the same six skills, where Claude Code reads them |
 
-Nothing lives in the chat, so a dropped connection, a closed laptop or a week
-away costs nothing:
-
-```sh
-leo plan               # the plan, plus "2 of 5 done | in progress: T3"
-git diff HEAD          # the code you already wrote, still sitting there
-cat .leo/manifest.md   # the review table, as far as it got
-```
-
-The Status column in the plan is the whole memory of a long change. `.leo/` is
-gitignored by default, which keeps it local and disposable — if you need a
-change to survive across machines or be visible to teammates, drop
-`.leo/plan.md` from `.gitignore` and commit it.
-
-## Layout
+Open `AGENTS.md` and fill in the block at the top:
 
 ```
-leo                dispatch: a command is a file in core/cmd/, no registry
-core/lib.sh        every shared helper, one screen
-core/cmd/*.sh      one file per command, readable top to bottom
-templates/         what `leo init` copies into a repository
+Mode: coding        <- coding | debugging | learning | review | exploration
+TDD:  yes           <- yes | no
 ```
 
-## Extending it
+The mode picks which skills apply. `TDD` picks which build stages the agent
+follows. Both are yours to set, and the agent is told never to change them.
 
-There are exactly two extension points, and neither requires touching the code:
+**You configure this once and then never mention it again.** "Use ponytail
+here" is not something you should have to type: the mode says ponytail is ON,
+so it is on — this reply, the next one, and the one after that. `AGENTS.md`
+is loaded on every request, so what it says is in force on every request, and
+each active skill's rule is written there in one line so it applies without
+the agent stopping to open anything.
 
-- **A new check** is a new file in `.leo/rules/`.
-- **A new command** is a new file in `core/cmd/`. `leo <name>` finds it.
+The tools work the same way. "Check the code graph for this" is not an
+instruction you should have to give: the mode says the graph is ON, so the
+agent runs `detect_changes` before writing the manifest and `trace_path`
+before reading a bug, because those moments are written beside the stages
+that want them. A tool that is not installed is reported **once** and then
+worked around, not announced every reply.
 
-If a change needs more machinery than that, it probably does not belong here.
-Every abstraction in this tool has to earn itself against a simple rule: you
-must be able to read the whole thing in one sitting.
+The agent names which skills are in force and which tools it used, in every
+reply. A skill you can see being applied is one you can object to; one
+applied silently is indistinguishable from one not applied at all.
 
-## Requirements
+## The loop
 
-git, bash 3.2, and a POSIX userland. No jq, no node, no network.
+`TDD: yes` — the test comes first, and the agent watches it fail:
+
+```
+grill -> plan -> task -> subtask -> test -> build -> manifest -> commit
+```
+
+`TDD: no` — the test comes after, and is still not optional:
+
+```
+grill -> plan -> task -> subtask -> build -> test -> manifest -> commit
+```
+
+Cycle two, in a new session, cannot edit code:
+
+```
+brief -> findings -> close
+```
+
+Same stages either way; the order *is* the difference. `commit` and `close`
+are yours, not the agent's.
+
+Every stage is a **git command that shows the truth** and a **file written
+from what it showed** — `git diff` for the manifest, `git show <sha>` for the
+review. git reports, the agent decides, and the decision lands where `git
+log` will still have it. `.agents/leo.md` is the only description of it.
+
+The stage carrying the weight is **manifest**: one row per hunk, each naming
+the task it serves, why it exists, and what breaks if it is deleted. It goes
+into the commit message body, so six months later `git blame` → `git show`
+answers the question with no AI in the loop and nothing installed.
+
+## Why there is no program
+
+leo was a CLI. `leo scan` turned the diff into a manifest, `leo check`
+enforced it, `leo commit` assembled the message. Eight commands, a plan
+registry, a capability system, 415 tests.
+
+It was also five consecutive releases of Windows bugs — an impostor `bash`
+from a vendor toolchain, the WSL launcher answering to the same name, a
+per-file subprocess that turned `leo --version` into a four-minute hang on a
+large repository. Every one was the cost of a program running where it was
+not native, and none were bugs in the workflow.
+
+The workflow was always the product. The program generated markdown and
+checked that markdown existed; an agent can read the instruction and write
+the file, which is what it does with every other instruction in the
+repository. So the instructions ship and the program does not.
+
+What is lost is enforcement: nothing now fails a build because a hunk has no
+row. `.agents/leo.md` makes the agent check itself at the manifest stage and
+report honestly, which is weaker than a gate and is the trade. What is kept
+is the artefact — the manifest in the commit message — which is the half that
+still answers questions in two years.
+
+## Tools
+
+Two, both optional, both self-contained binaries on macOS, Linux and
+Windows. Missing one is not an error.
+
+| | what it does | install |
+|---|---|---|
+| [code graph](https://github.com/DeusData/codebase-memory-mcp) | who calls what, what a diff touches | one-line script, no runtime |
+| [rtk](https://github.com/rtk-ai/rtk) | filters shell output structurally | `brew install rtk` · `winget install rtk-ai.rtk` |
+
+The agent is told never to install them — it shows you the command.
+
+## Licence
+
+MIT.
+
+Three of the six skills are other people's work. Each is vendored rather
+than referenced — a stage whose definition lives on someone else's default
+branch can change under you between two sessions — and each ships the licence
+it is used under, in its own directory.
+
+| skill | whose | terms |
+|---|---|---|
+| `ponytail` | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT, byte-for-byte |
+| `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT, byte-for-byte |
+| `grill-me` | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT, **adapted** |
+
+`grill-me` is adapted rather than copied and says so in the file. Upstream is
+two files, one of which only says "call the Skill tool with grilling" — an
+instruction exactly one runtime can follow. They are one file here, named for
+the trigger, so any runtime can read it. The interview method is his,
+unchanged.
+
+`tdd`, `caveman` and `feynman` are leo's own. `feynman` quotes Feynman only
+where the source is verified, and names the quotes commonly misattributed to him.
