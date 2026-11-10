@@ -32,9 +32,9 @@ const SRC = path.join(HOME, '.agents');
 // Code reads skills from that path and nowhere else, and a skill nobody's
 // runtime loads is the bug this vendoring exists to fix. Any other runtime
 // is pointed at .agents/skills/, which is the canonical copy.
-const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman'];
+const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman', 'evidence', 'points'];
 
-// Three of the six are somebody else's work, vendored under their own
+// Three of the eight are somebody else's work, vendored under their own
 // licence, and the licence travels in the same directory as the file it
 // covers -- not one LICENSE at the top for all of them, which would leave a
 // reader guessing which terms applied to what.
@@ -50,6 +50,18 @@ const DOCS = ['CONTEXT.md', 'ARCHITECTURE.md', 'RULES.md'];
 // the AGENT when it reaches that stage -- never by init. Shipping a
 // pre-made .agents/plan.md would be shipping half a change.
 const TEMPLATES = ['plan.md', 'task.md', 'manifest.md', 'review.md'];
+
+// The one thing that runs. The evidence skill is advice; this is the gate
+// behind it: Claude Code and Codex both call the script when a reply is about
+// to finish, and it sends back a reply whose citations are not real. Each
+// runtime reads its hooks from its own path, so each gets a registration.
+// An existing settings file is kept like every other file, and init says so
+// -- merging into somebody's settings is not a copier's job.
+const HOOKS = [
+  [path.join('hooks', 'check-evidence.js'), path.join('.agents', 'hooks', 'check-evidence.js')],
+  [path.join('hooks', 'claude-settings.json'), path.join('.claude', 'settings.json')],
+  [path.join('hooks', 'codex-hooks.json'), path.join('.codex', 'hooks.json')],
+];
 
 function plan() {
   const out = [['AGENTS.md', 'AGENTS.md']];
@@ -73,6 +85,7 @@ function plan() {
     out.push([rel, path.join('.agents', rel)]);
     out.push([rel, path.join('.claude', 'skills', s, 'LICENSE')]);
   }
+  for (const h of HOOKS) out.push(h);
   return out;
 }
 
@@ -96,6 +109,7 @@ function main(argv) {
   }
 
   let wrote = 0, kept = 0;
+  const keptHooks = [];
   for (const [from, to] of plan()) {
     const src = path.join(SRC, from);
     if (!fs.existsSync(src)) {
@@ -105,6 +119,7 @@ function main(argv) {
     if (fs.existsSync(to) && !force) {
       process.stderr.write('  skip    ' + to + ' (exists)\n');
       kept++;
+      if (/settings\.json$|hooks\.json$/.test(to)) keptHooks.push(to);
       continue;
     }
     fs.mkdirSync(path.dirname(to), { recursive: true });
@@ -117,12 +132,17 @@ function main(argv) {
   if (kept && !force) {
     process.stderr.write('     leo init --force overwrites the kept ones\n');
   }
+  for (const h of keptHooks) {
+    process.stderr.write('     ' + h + ' was kept: add the Stop hook from .agents/hooks/ to it by hand\n');
+  }
   process.stderr.write(
     '\n  1. open AGENTS.md and fill in the session block at the top:\n' +
     '     the mode, and whether this is TDD work\n' +
     '  2. point your agent at AGENTS.md\n' +
     '  3. the stages are in .agents/leo.md — that is the whole workflow\n' +
-    '\n  Nothing to run. leo is not needed again in this repository.\n');
+    '  4. Codex: run /hooks once to trust .codex/hooks.json\n' +
+    '\n  leo is not needed again. The one thing that runs is the evidence\n' +
+    '  hook, called by your agent at the end of each reply.\n');
   return 0;
 }
 

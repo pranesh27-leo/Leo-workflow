@@ -45,12 +45,16 @@ for f in AGENTS.md \
          .agents/skills/caveman/SKILL.md \
          .agents/skills/humanizer/SKILL.md \
          .agents/skills/feynman/SKILL.md \
+         .agents/skills/evidence/SKILL.md \
+         .agents/skills/points/SKILL.md \
          .claude/skills/grill-me/SKILL.md \
          .claude/skills/tdd/SKILL.md \
          .claude/skills/ponytail/SKILL.md \
          .claude/skills/caveman/SKILL.md \
          .claude/skills/humanizer/SKILL.md \
-         .claude/skills/feynman/SKILL.md; do
+         .claude/skills/feynman/SKILL.md \
+         .claude/skills/evidence/SKILL.md \
+         .claude/skills/points/SKILL.md; do
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
 done
 
@@ -163,7 +167,7 @@ for stage in grill plan task subtask build manifest commit brief findings close;
 done
 
 # The mode table and the skills that exist have to be the same set.
-for skill in grill-me tdd ponytail caveman humanizer feynman; do
+for skill in grill-me tdd ponytail caveman humanizer feynman evidence points; do
   grep -qi "$skill" "$R/AGENTS.md" \
     && ok "AGENTS.md maps $skill to modes" \
     || bad "$skill ships but AGENTS.md never says when to use it"
@@ -258,6 +262,17 @@ printf '%s' "$orders" | grep -qE "^\| *use a skill or tool silently *\|" \
   && ok "standing orders forbid using a skill or tool silently" \
   || bad "nothing forbids using a skill or tool silently"
 
+# evidence and points are not per-mode: they are in force on every reply, in
+# every mode. The table ROW of each, with ON in all five mode columns -- a
+# loose grep for the name would pass with one mode quietly set to OFF.
+for skill in evidence points; do
+  modes=$(awk '/^\| mode \|/{f=1;next} f&&/^\|---/{next} f&&/^\| \*\*/{print} f&&!/^\|/{exit}' "$R/AGENTS.md")
+  col=$(awk '/^\| mode \|/{n=split($0,h,"|"); for(i=1;i<=n;i++){gsub(/ /,"",h[i]); if(h[i]=="'"$skill"'") print i}; exit}' "$R/AGENTS.md")
+  offs=$(printf '%s\n' "$modes" | awk -F'|' -v c="$col" '{v=$c; gsub(/[ *]/,"",v); if (v!="ON") print}')
+  [ -n "$col" ] && [ -z "$offs" ] && [ "$(printf '%s\n' "$modes" | grep -c .)" = 5 ] \
+    && ok "$skill is ON in every mode" || bad "$skill is not ON in every mode"
+done
+
 # And the per-reply framing: the rules have to be in force on every request,
 # not read once at the start of a session. That distinction is the whole
 # difference between a harness and a README.
@@ -300,6 +315,55 @@ grep -qi 'adapted' "$R/.agents/skills/grill-me/SKILL.md" \
 grep -qiE '^ *(call|use) the skill tool' "$R/.agents/skills/grill-me/SKILL.md" \
   && bad "grill-me instructs the reader to call Claude Code's Skill tool" \
   || ok "grill-me's instruction names a path, not one runtime's mechanism"
+
+# =========================================================================
+printf '\nthe evidence hook\n'
+# =========================================================================
+# The one thing in the harness that runs. It reads the reply the agent is
+# about to finish with and sends it back if a cited line does not exist, or
+# if it names a file in the repository and cites nothing. Both are checkable
+# by a program, which is the point: the rule in AGENTS.md is advice, this is
+# a gate.
+HOOK="$R/.agents/hooks/check-evidence.js"
+E="$TMP/ev"; mkdir -p "$E/src" "$E/.git"
+printf 'one\ntwo\nthree\n' > "$E/src/app.js"
+
+# Feed the hook a Stop payload; print BLOCK or PASS.
+verdict() {
+  out=$(printf '%s' "$1" | node "$HOOK" 2>/dev/null); rc=$?
+  if [ "$rc" = 2 ] || printf '%s' "$out" | grep -q '"block"'; then echo BLOCK; else echo PASS; fi
+}
+payload() {  # message, [session], [stop_hook_active]
+  node -e 'process.stdout.write(JSON.stringify({hook_event_name:"Stop",cwd:process.argv[1],session_id:process.argv[3]||"s",stop_hook_active:process.argv[4]==="1",last_assistant_message:process.argv[2]}))' "$E" "$1" "${2:-s$RANDOM}" "${3:-0}"
+}
+
+[ -f "$HOOK" ] && ok "init writes the evidence hook" || bad "init did not write .agents/hooks/check-evidence.js"
+[ "$(verdict "$(payload 'It reads the config at `src/app.js:2`.')")" = PASS ] \
+  && ok "a real file:line passes" || bad "a real file:line was blocked"
+[ "$(verdict "$(payload 'See src/app.js:1-3 for the loop.')")" = PASS ] \
+  && ok "a real line range passes" || bad "a real line range was blocked"
+[ "$(verdict "$(payload 'It retries in `src/net.js:12`.')")" = BLOCK ] \
+  && ok "a citation to a file that does not exist is sent back" || bad "a made-up file passed"
+[ "$(verdict "$(payload 'It loops at `src/app.js:40`.')")" = BLOCK ] \
+  && ok "a line past the end of the file is sent back" || bad "a line past EOF passed"
+[ "$(verdict "$(payload 'The logic lives in `src/app.js` and runs first.')")" = BLOCK ] \
+  && ok "naming a repo file with no line cited is sent back" || bad "an uncited claim about a repo file passed"
+[ "$(verdict "$(payload 'Pushed. The release is up.')")" = PASS ] \
+  && ok "a reply about no code passes" || bad "a reply with no code in it was blocked"
+[ "$(verdict "$(payload 'Open http://localhost:3000 or example.com:443.')")" = PASS ] \
+  && ok "URLs and host:port are not mistaken for citations" || bad "a URL was treated as a citation"
+[ "$(verdict "$(payload 'It retries in `src/net.js:12`.' s 1)")" = PASS ] \
+  && ok "a reply already sent back once is let through, so it cannot loop" || bad "stop_hook_active did not stop the loop"
+# Claude Code's payload may not carry stop_hook_active, so the hook keeps its
+# own count. Three blocks in a row on one session and it lets go.
+for i in 1 2; do verdict "$(payload 'bad `src/net.js:1`' loop)" >/dev/null; done
+[ "$(verdict "$(payload 'bad `src/net.js:1`' loop)")" = PASS ] \
+  && ok "the hook gives up after two blocks on one session" || bad "the hook can block the same session forever"
+
+for f in .claude/settings.json .codex/hooks.json; do
+  grep -q 'check-evidence.js' "$R/$f" 2>/dev/null \
+    && ok "$f registers the evidence hook on Stop" || bad "$f does not register the hook"
+done
 
 # =========================================================================
 printf '\nwhat npm would ship\n'

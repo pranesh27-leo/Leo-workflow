@@ -7,8 +7,9 @@ each stage — as files your agent reads, in your repository.
 npx leo-workflow init
 ```
 
-That is the whole installation. It copies thirteen files and exits. Nothing
-runs during your work, nothing watches, nothing to keep installed.
+That is the whole installation. It copies the files and exits. The one thing
+that runs afterwards is the evidence hook, which your agent calls at the end of
+each reply; nothing else watches, and there is nothing to keep installed.
 
 ## What you get
 
@@ -22,11 +23,15 @@ runs during your work, nothing watches, nothing to keep installed.
 | `.agents/skills/caveman/` | what you say — cut what was not asked for |
 | `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
 | `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
+| `.agents/skills/evidence/` | answers about code from the code, cited, never guessed — **every reply** |
+| `.agents/skills/points/` | every reply in 1–5 points — **every reply** |
+| `.agents/hooks/check-evidence.js` | the gate behind `evidence`, for Claude Code and Codex |
+| `.claude/settings.json` · `.codex/hooks.json` | the hook, registered where each agent reads it |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
 | `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
 | `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
-| `.claude/skills/*/` | the same six skills, where Claude Code reads them |
+| `.claude/skills/*/` | the same eight skills, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
@@ -55,6 +60,29 @@ worked around, not announced every reply.
 The agent names which skills are in force and which tools it used, in every
 reply. A skill you can see being applied is one you can object to; one
 applied silently is indistinguishable from one not applied at all.
+
+## Answers from the code, not from a guess
+
+Ask an agent how something in your repository works and it will often read
+three files, write a confident explanation, and be wrong. Challenge one line
+and it looks properly, then says *"Sorry, I was wrong."* The capability was
+there. Nothing made it look before answering.
+
+Two layers stop that, on every reply, in every mode:
+
+| layer | what it does | can it be skipped? |
+|---|---|---|
+| `evidence` skill, in `AGENTS.md` | read before answering, trace the real path, cite `path:LINE` beside every claim, label it verified / inferred / unknown, try to refute it first | yes, it is advice the model follows |
+| the Stop hook | before a reply reaches you, checks every cited file exists and every cited line is inside it, and that a reply naming a repo file cites a line. Fails, and the reply goes back to the agent | no, the agent runtime runs it |
+
+The hook cannot tell whether a claim is *true*. It guarantees the evidence a
+claim points at is *real*, which a made-up explanation is not. It gives up
+after two blocks in a row on one session, so it cannot loop.
+
+Claude Code reads `.claude/settings.json`. Codex reads `.codex/hooks.json`,
+and asks you to trust it once with `/hooks`. If either file already existed,
+`leo init` keeps yours and tells you to copy the hook in from
+`.agents/hooks/`.
 
 ## The loop
 
@@ -128,7 +156,7 @@ The agent is told never to install them — it shows you the command.
 
 MIT.
 
-Three of the six skills are other people's work. Each is vendored rather
+Three of the eight skills are other people's work. Each is vendored rather
 than referenced — a stage whose definition lives on someone else's default
 branch can change under you between two sessions — and each ships the licence
 it is used under, in its own directory.
@@ -145,5 +173,5 @@ instruction exactly one runtime can follow. They are one file here, named for
 the trigger, so any runtime can read it. The interview method is his,
 unchanged.
 
-`tdd`, `caveman` and `feynman` are leo's own. `feynman` quotes Feynman only
+`tdd`, `caveman`, `feynman`, `evidence` and `points` are leo's own. `feynman` quotes Feynman only
 where the source is verified, and names the quotes commonly misattributed to him.

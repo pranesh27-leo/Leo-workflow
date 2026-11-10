@@ -21,6 +21,10 @@ a skill again. "Use ponytail here" is not something they should ever have to
 type: the mode says ponytail is ON, so it is on, for this reply and the next
 one and the one after that.
 
+**Two skills are mandatory on every reply, in every mode, and nothing turns
+them off:** `evidence` (never answer about code from a guess) and `points`
+(answer in 1–5 points). They are not choices the mode makes.
+
 Four things, in order, on every single reply:
 
 1. **State the mode and the stage.** First line. `[coding · build]`.
@@ -101,16 +105,17 @@ twice.
 
 Every one of these is ON or OFF for the mode. There is no third state and
 nothing to invoke: if the table says ON, it applies to this reply. The one
-exception is feynman, which is also **on request** in every mode: the moment
+exceptions are `evidence` and `points`, ON in every mode with no way to turn
+them off, and feynman, which is also **on request** in every mode: the moment
 the developer says they do not understand something, it applies to that reply.
 
-| mode | grill | tdd | ponytail | caveman | humanizer | feynman | graph | rtk |
-|---|---|---|---|---|---|---|---|---|
-| **coding** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON |
-| **debugging** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON |
-| **learning** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON |
-| **review** | not used | OFF | OFF | ON | **ON** | on request | ON | ON |
-| **exploration** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON |
+| mode | evidence | points | grill | tdd | ponytail | caveman | humanizer | feynman | graph | rtk |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **coding** | **ON** | **ON** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON |
+| **debugging** | **ON** | **ON** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON |
+| **learning** | **ON** | **ON** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON |
+| **review** | **ON** | **ON** | not used | OFF | OFF | ON | **ON** | on request | ON | ON |
+| **exploration** | **ON** | **ON** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON |
 
 OFF is the developer's decision, not a default to work around. Caveman is OFF
 in debugging and learning because it cuts, and in those modes the line that
@@ -124,6 +129,8 @@ to be asked, because an explanation nobody wanted is noise on a build.
 
 | skill | the rule, every reply it is ON | the method |
 |---|---|---|
+| **evidence** | Any claim about code: read it first, trace the real path (callers, overrides, config, dead code), cite `path:LINE` you read **this session** beside the claim, label it verified / inferred / unknown, try to refute it before answering. Never present a guess as a fact. A hook checks the citations are real. | `.agents/skills/evidence/SKILL.md` |
+| **points** | Every reply: 1–5 numbered points sized to the question, answer first, one idea per point. No preamble, no closing, no padding. Long form only when they ask for detail (feynman counts as asking). | `.agents/skills/points/SKILL.md` |
 | **grill-me** | Interview until the decisions are settled, in rounds, before building. Never build on an assumption you did not put to them. | `.agents/skills/grill-me/SKILL.md` |
 | **tdd** | Write the test, run it, **watch it fail for the reason you expect**, then implement. Report which steps you actually did. | `.agents/skills/tdd/SKILL.md` |
 | **ponytail** | Climb the ladder before writing: does it need to exist, is it already here, does the stdlib do it, can it be one line. Stop at the first rung that holds. | `.agents/skills/ponytail/SKILL.md` |
@@ -163,5 +170,6 @@ file and let them decide.
 | skip a stage quietly | name the stage you skipped, then wait |
 | change `Mode:` or `TDD:` | ask them to |
 | use a skill or tool silently | name it in the reply that uses it |
+| state what the code does unread | read it, cite `path:LINE`, or say it is unknown |
 
 After a commit, tell them to start a **fresh session**.
