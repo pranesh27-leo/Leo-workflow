@@ -30,10 +30,17 @@ const MAX_BLOCKS = 2;
 const EXT = 'js|mjs|cjs|ts|tsx|jsx|py|rb|go|rs|java|kt|kts|swift|c|h|cc|cpp|hpp|cs|php|' +
   'scala|sh|bash|zsh|ps1|lua|dart|ex|exs|erl|clj|vue|svelte|sql|json|jsonc|toml|yaml|yml|' +
   'ini|cfg|conf|xml|html|css|scss|md|mdx|txt|gradle|tf|proto|graphql|env|lock';
-// A path, then :LINE or :START-END. The look-behind keeps URLs (://) and
-// emails out; the extension list keeps host:port out.
-const CITE = new RegExp('(?<![\\w/:@.-])((?:[\\w.-]+/)*[\\w.-]+\\.(?:' + EXT + ')):(\\d+)(?:-(\\d+))?\\b', 'g');
-const NAMED = new RegExp('(?<![\\w/:@.-])((?:[\\w.-]+/)*[\\w.-]+\\.(?:' + EXT + '))(?![\\w:])', 'g');
+// A path, then :LINE or :START-END. Separators are / or \\ (Windows), and
+// the path may be absolute (/x, C:\\x, ~/x). The look-behind keeps URLs (://)
+// and emails out; the extension list keeps host:port out.
+const PATH = '((?:[A-Za-z]:[\\\\/]|~[\\\\/]|[\\\\/])?(?:[\\w.-]+[\\\\/])*[\\w.-]+\\.(?:' + EXT + '))';
+const EDGE = '(?<![\\w:@.\\\\/-])';
+const CITE = new RegExp(EDGE + PATH + ':(\\d+)(?:-(\\d+))?\\b', 'g');
+const NAMED = new RegExp(EDGE + PATH + '(?![\\w:])', 'g');
+
+// Directories never worth searching for a cited file.
+const SKIP = new Set(['.git', 'node_modules', '.venv', 'venv', '__pycache__', 'dist', 'target', '.next']);
+const WALK_LIMIT = 20000;
 
 function readStdin() {
   try { return fs.readFileSync(0, 'utf8'); } catch (e) { return ''; }
@@ -51,12 +58,43 @@ function rootOf(dir) {
   }
 }
 
-function resolve(p, cwd, root) {
-  for (const base of [cwd, root]) {
-    const f = path.resolve(base, p);
-    try { if (fs.statSync(f).isFile()) return f; } catch (e) { /* next */ }
+function isFile(f) {
+  try { return fs.statSync(f).isFile(); } catch (e) { return false; }
+}
+
+// Every file under cwd, once, bounded. Only built when a cited path does not
+// resolve directly: agents cite relative to a subproject as often as to the
+// root. Plain fs calls, no subprocess -- see the note at the top.
+let index = null;
+function walk(dir) {
+  if (index) return index;
+  index = [];
+  const stack = [dir];
+  while (stack.length && index.length < WALK_LIMIT) {
+    const d = stack.pop();
+    let ents;
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { continue; }
+    for (const e of ents) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) stack.push(f); }
+      else if (e.isFile()) index.push(f);
+    }
   }
-  return null;
+  return index;
+}
+
+function resolve(raw, cwd, root) {
+  let p = raw.replace(/\\/g, '/');
+  if (p.startsWith('~/')) p = path.join(os.homedir(), p.slice(2));
+  if (path.isAbsolute(p) || /^[A-Za-z]:\//.test(p)) return isFile(p) ? p : null;
+  for (const base of [cwd, root, path.dirname(root)]) {
+    const f = path.resolve(base, p);
+    if (isFile(f)) return f;
+  }
+  if (p.startsWith('../')) return null;
+  const tail = path.sep + path.normalize(p);
+  const hits = walk(cwd).filter((f) => f.endsWith(tail));
+  return hits.length === 1 ? hits[0] : null;
 }
 
 function lineCount(file) {
@@ -81,7 +119,11 @@ function check(msg, cwd) {
     cited++;
     const [ref, p, a, b] = m;
     const f = resolve(p, cwd, root);
-    if (!f) { problems.push(ref + ': no such file in this repository'); continue; }
+    if (!f) {
+      problems.push(ref + ': no such file, looked from ' + cwd +
+        '. If it is elsewhere, cite it by a path that works from there (absolute, or ../other/x)');
+      continue;
+    }
     const n = lineCount(f);
     const hi = Math.max(+a, b ? +b : 0);
     if (+a < 1 || hi > n) problems.push(ref + ': ' + p + ' has ' + n + ' lines');
@@ -133,6 +175,8 @@ function main() {
       problems.join('\n- ') +
       '\nOpen the files, find the actual lines, and cite them as path:LINE. ' +
       'If you cannot establish something from the code, say it is unknown. Never guess. ' +
+      'Do not repeat the reply: the developer has already read it. ' +
+      'Send only the corrected points, each with its citation. ' +
       '(.agents/skills/evidence/SKILL.md)'
   }) + '\n');
   return 0;

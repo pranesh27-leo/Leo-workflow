@@ -25,13 +25,15 @@ each reply; nothing else watches, and there is nothing to keep installed.
 | `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
 | `.agents/skills/evidence/` | answers about code from the code, cited, never guessed — **every reply** |
 | `.agents/skills/points/` | every reply in 1–5 points — **every reply** |
+| `.agents/skills/asd-ste100/` | those points in plain, single-meaning English — **every reply**, *vendored, MIT* |
+| `.agents/tools/understand.md` | Understand Anything — a knowledge graph to find where to look |
 | `.agents/hooks/check-evidence.js` | the gate behind `evidence`, for Claude Code and Codex |
 | `.claude/settings.json` · `.codex/hooks.json` | the hook, registered where each agent reads it |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
 | `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
 | `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
-| `.claude/skills/*/` | the same eight skills, where Claude Code reads them |
+| `.claude/skills/*/` | the same nine skills, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
@@ -78,6 +80,14 @@ Two layers stop that, on every reply, in every mode:
 The hook cannot tell whether a claim is *true*. It guarantees the evidence a
 claim points at is *real*, which a made-up explanation is not. It gives up
 after two blocks in a row on one session, so it cannot loop.
+
+A Stop hook runs **after** the reply is on your screen, so a blocked reply
+stays visible. The hook tells the agent to send only the corrected points,
+not the reply again, and the `evidence` skill tells it to cite every file it
+names before it finishes, so the block is rare. Paths are found the ways
+agents write them: relative to the session directory or the repository
+root, into a sibling directory (`../other/x.py`), absolute, with Windows
+backslashes, or relative to a subproject below the session directory.
 
 Claude Code reads `.claude/settings.json`. Codex reads `.codex/hooks.json`,
 and asks you to trust it once with `/hooks`. If either file already existed,
@@ -142,13 +152,15 @@ still answers questions in two years.
 
 ## Tools
 
-Two, both optional, both self-contained binaries on macOS, Linux and
-Windows. Missing one is not an error.
+Three, all optional. The code graph and rtk are self-contained binaries on
+macOS, Linux and Windows. Understand Anything is an agent plugin. Missing one
+is not an error.
 
 | | what it does | install |
 |---|---|---|
 | [code graph](https://github.com/DeusData/codebase-memory-mcp) | who calls what, what a diff touches | one-line script, no runtime |
 | [rtk](https://github.com/rtk-ai/rtk) | filters shell output structurally | `brew install rtk` · `winget install rtk-ai.rtk` |
+| [Understand Anything](https://github.com/Egonex-AI/Understand-Anything) | a knowledge graph of the repository, to ask where to look | `/plugin install understand-anything` · see `.agents/tools/understand.md` |
 
 The agent is told never to install them — it shows you the command.
 
@@ -156,7 +168,7 @@ The agent is told never to install them — it shows you the command.
 
 MIT.
 
-Three of the eight skills are other people's work. Each is vendored rather
+Four of the nine skills are other people's work. Each is vendored rather
 than referenced — a stage whose definition lives on someone else's default
 branch can change under you between two sessions — and each ships the licence
 it is used under, in its own directory.
@@ -165,6 +177,7 @@ it is used under, in its own directory.
 |---|---|---|
 | `ponytail` | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT, byte-for-byte |
 | `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT, byte-for-byte |
+| `asd-ste100` | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) | MIT, byte-for-byte, with its rules, examples and linter |
 | `grill-me` | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT, **adapted** |
 
 `grill-me` is adapted rather than copied and says so in the file. Upstream is

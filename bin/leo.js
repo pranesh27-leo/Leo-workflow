@@ -32,13 +32,25 @@ const SRC = path.join(HOME, '.agents');
 // Code reads skills from that path and nowhere else, and a skill nobody's
 // runtime loads is the bug this vendoring exists to fix. Any other runtime
 // is pointed at .agents/skills/, which is the canonical copy.
-const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman', 'evidence', 'points'];
+const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman', 'evidence', 'points', 'asd-ste100'];
 
-// Three of the eight are somebody else's work, vendored under their own
+// Four of the nine are somebody else's work, vendored under their own
 // licence, and the licence travels in the same directory as the file it
 // covers -- not one LICENSE at the top for all of them, which would leave a
 // reader guessing which terms applied to what.
-const LICENSED = ['grill-me', 'ponytail', 'humanizer'];
+const LICENSED = ['grill-me', 'ponytail', 'humanizer', 'asd-ste100'];
+
+// Files a vendored skill reads beside its SKILL.md. asd-ste100's method
+// points at its rule summary, its examples and its linter by relative path,
+// so they travel with it or the skill points at nothing.
+const EXTRA = {
+  'asd-ste100': [
+    path.join('references', 'writing-rules.md'),
+    path.join('examples', 'before-after.md'),
+    path.join('examples', 'linter-edge-cases.md'),
+    path.join('scripts', 'ste-lint.py'),
+  ],
+};
 
 // The three repository documents land at the root, beside AGENTS.md, because
 // that is where a human looks for them. They ship as placeholders to be
@@ -72,7 +84,7 @@ function plan() {
   for (const t of TEMPLATES) {
     out.push([path.join('templates', t), path.join('.agents', 'templates', t)]);
   }
-  for (const t of ['graph', 'rtk']) {
+  for (const t of ['graph', 'rtk', 'understand']) {
     out.push([path.join('tools', t + '.md'), path.join('.agents', 'tools', t + '.md')]);
   }
   for (const s of SKILLS) {
@@ -84,6 +96,13 @@ function plan() {
     const rel = path.join('skills', s, 'LICENSE');
     out.push([rel, path.join('.agents', rel)]);
     out.push([rel, path.join('.claude', 'skills', s, 'LICENSE')]);
+  }
+  for (const s of Object.keys(EXTRA)) {
+    for (const f of EXTRA[s]) {
+      const rel = path.join('skills', s, f);
+      out.push([rel, path.join('.agents', rel)]);
+      out.push([rel, path.join('.claude', 'skills', s, f)]);
+    }
   }
   for (const h of HOOKS) out.push(h);
   return out;

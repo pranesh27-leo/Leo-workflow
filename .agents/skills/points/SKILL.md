@@ -27,7 +27,10 @@ essay around it.
 5. **Code, commands, tables and citations stay intact.** A code block or a
    small table can sit inside a point when it *is* the answer. Never shorten
    code, output, error text, or bad news to fit.
-6. **Plain words.** Short sentences. No filler adjectives.
+6. **Plain words, by a standard.** Write each point in STE-flavored English
+   (`.agents/skills/asd-ste100/SKILL.md`): short sentences, active voice,
+   simple tenses, no phrasal verbs, no semicolons, one word for one thing.
+   Keep every hedge: "may fail" does not become "fails".
 
 ## When to write more
 

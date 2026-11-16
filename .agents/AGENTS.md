@@ -21,9 +21,10 @@ a skill again. "Use ponytail here" is not something they should ever have to
 type: the mode says ponytail is ON, so it is on, for this reply and the next
 one and the one after that.
 
-**Two skills are mandatory on every reply, in every mode, and nothing turns
-them off:** `evidence` (never answer about code from a guess) and `points`
-(answer in 1–5 points). They are not choices the mode makes.
+**Three skills are mandatory on every reply, in every mode, and nothing turns
+them off:** `evidence` (never answer about code from a guess), `points`
+(answer in 1–5 points) and `asd-ste100` (write those points in plain,
+single-meaning English). They are not choices the mode makes.
 
 Four things, in order, on every single reply:
 
@@ -105,17 +106,17 @@ twice.
 
 Every one of these is ON or OFF for the mode. There is no third state and
 nothing to invoke: if the table says ON, it applies to this reply. The one
-exceptions are `evidence` and `points`, ON in every mode with no way to turn
+exceptions are `evidence`, `points` and `asd-ste100`, ON in every mode with no way to turn
 them off, and feynman, which is also **on request** in every mode: the moment
 the developer says they do not understand something, it applies to that reply.
 
-| mode | evidence | points | grill | tdd | ponytail | caveman | humanizer | feynman | graph | rtk |
-|---|---|---|---|---|---|---|---|---|---|---|
-| **coding** | **ON** | **ON** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON |
-| **debugging** | **ON** | **ON** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON |
-| **learning** | **ON** | **ON** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON |
-| **review** | **ON** | **ON** | not used | OFF | OFF | ON | **ON** | on request | ON | ON |
-| **exploration** | **ON** | **ON** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON |
+| mode | evidence | points | asd-ste100 | grill | tdd | ponytail | caveman | humanizer | feynman | graph | understand | rtk |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **coding** | **ON** | **ON** | **ON** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON | ON |
+| **debugging** | **ON** | **ON** | **ON** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON | ON |
+| **learning** | **ON** | **ON** | **ON** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON | ON |
+| **review** | **ON** | **ON** | **ON** | not used | OFF | OFF | ON | **ON** | on request | ON | ON | ON |
+| **exploration** | **ON** | **ON** | **ON** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON | ON |
 
 OFF is the developer's decision, not a default to work around. Caveman is OFF
 in debugging and learning because it cuts, and in those modes the line that
@@ -131,6 +132,7 @@ to be asked, because an explanation nobody wanted is noise on a build.
 |---|---|---|
 | **evidence** | Any claim about code: read it first, trace the real path (callers, overrides, config, dead code), cite `path:LINE` you read **this session** beside the claim, label it verified / inferred / unknown, try to refute it before answering. Never present a guess as a fact. A hook checks the citations are real. | `.agents/skills/evidence/SKILL.md` |
 | **points** | Every reply: 1–5 numbered points sized to the question, answer first, one idea per point. No preamble, no closing, no padding. Long form only when they ask for detail (feynman counts as asking). | `.agents/skills/points/SKILL.md` |
+| **asd-ste100** | Every reply's prose in STE-flavored English: short sentences, active voice, simple tenses, no phrasal verbs, no semicolons, no noun stacks, one word for one thing. Strict mode for text another program or agent parses: error messages, tool descriptions, prompts. Never drop a hedge or add a fact to shorten. | `.agents/skills/asd-ste100/SKILL.md` |
 | **grill-me** | Interview until the decisions are settled, in rounds, before building. Never build on an assumption you did not put to them. | `.agents/skills/grill-me/SKILL.md` |
 | **tdd** | Write the test, run it, **watch it fail for the reason you expect**, then implement. Report which steps you actually did. | `.agents/skills/tdd/SKILL.md` |
 | **ponytail** | Climb the ladder before writing: does it need to exist, is it already here, does the stdlib do it, can it be one line. Stop at the first rung that holds. | `.agents/skills/ponytail/SKILL.md` |
@@ -151,9 +153,10 @@ an instruction the developer should have to give.
 | tool | reach for it, every reply it is ON | the detail |
 |---|---|---|
 | **code graph** | **Before the manifest**, `detect_changes` on the diff — it answers the same question the table asks, one row at a time. **Debugging**: `trace_path` inbound first — what can even reach the broken thing. **Learning**: `get_architecture`, then `trace_path` outbound. Always the CLI: `codebase-memory-mcp cli <tool> '<json>'`. | `.agents/tools/graph.md` |
+| **understand** | **Before answering a question about the repository**, when `.ua/knowledge-graph.json` exists: `/understand-chat` (Codex: `$understand-chat`) to find **where** to look. The graph is a lead, never evidence: open the files it points at and cite those lines. Code and graph disagree → the code is right. | `.agents/tools/understand.md` |
 | **rtk** | Ambient — already filtering your shell output, nothing to invoke. Keep leo's own file reads out of the hook's rewrite: a filtered read of a table you are about to fill in is a table you fill in wrong. | `.agents/tools/rtk.md` |
 
-Both are optional and external, and **missing one is not an error**. Say so
+All three are optional and external, and **missing one is not an error**. Say so
 **once**, the first time you would have used it, and carry on without it —
 repeating it every reply is noise about a fact that has not changed.
 

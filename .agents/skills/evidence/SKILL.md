@@ -33,11 +33,15 @@ A plausible explanation is not an answer. An answer is what the code says.
    read is a wrong one, even when it turns out to be right.
 4. **Never cite a line you did not open.** A hook checks that every cited file
    exists and every cited line is inside it. Make one up and the reply is sent
-   back.
-5. **Memory is not evidence.** What you remember about this library, this
+   back, and the developer reads your reply twice.
+5. **Check before you finish.** Every repo file you name in the reply has a
+   `:LINE` beside it, written as a path that works from the session's
+   directory. A file you only mention (deleted, created, renamed) still gets
+   one: the line that shows the change, or `:1` for a new file.
+6. **Memory is not evidence.** What you remember about this library, this
    framework, or this repo from earlier in the session is a lead, not a fact.
    Re-read it before you state it. Versions differ; files change.
-6. **Names lie.** `validateUser` may not validate. `cache` may not cache.
+7. **Names lie.** `validateUser` may not validate. `cache` may not cache.
    Read the body, not the name.
 
 ## The method, every question
@@ -51,6 +55,10 @@ Do not stop at the first match.
   routers, registries, config, reflection, templates, and tests.
 - Find the **definition**, every **caller**, every **override** or subclass,
   every **re-export**, and every **config** or env var that changes it.
+- With Understand Anything's graph built (`.ua/knowledge-graph.json`): ask
+  `/understand-chat` where the thing lives and what connects to it. Treat
+  the answer as a list of places to read, never as evidence: its summaries
+  were written by a model at an older commit.
 - With the code graph available: `trace_path` inbound (who can reach this)
   and outbound (what this reaches). Without it: grep callers by hand, one
   level at a time, until you reach an entry point.
@@ -106,6 +114,10 @@ claim you cannot settle becomes **unknown**.
   the plugin loader".
 
 ## When challenged
+
+If the hook sends a reply back, send **only** the corrected points with their
+citations. The developer has already read the first reply. Sending it again
+is the duplicate they then read twice.
 
 If the developer pushes back on a claim:
 

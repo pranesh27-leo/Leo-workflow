@@ -47,6 +47,11 @@ for f in AGENTS.md \
          .agents/skills/feynman/SKILL.md \
          .agents/skills/evidence/SKILL.md \
          .agents/skills/points/SKILL.md \
+         .agents/skills/asd-ste100/SKILL.md \
+         .agents/skills/asd-ste100/references/writing-rules.md \
+         .agents/skills/asd-ste100/examples/before-after.md \
+         .agents/skills/asd-ste100/scripts/ste-lint.py \
+         .agents/tools/understand.md \
          .claude/skills/grill-me/SKILL.md \
          .claude/skills/tdd/SKILL.md \
          .claude/skills/ponytail/SKILL.md \
@@ -54,7 +59,9 @@ for f in AGENTS.md \
          .claude/skills/humanizer/SKILL.md \
          .claude/skills/feynman/SKILL.md \
          .claude/skills/evidence/SKILL.md \
-         .claude/skills/points/SKILL.md; do
+         .claude/skills/points/SKILL.md \
+         .claude/skills/asd-ste100/SKILL.md \
+         .claude/skills/asd-ste100/scripts/ste-lint.py; do
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
 done
 
@@ -81,7 +88,7 @@ done
 # Vendored work travels with its own licence, in its own directory. One
 # LICENSE at the top for five skills from three authors leaves a reader
 # guessing which terms cover what.
-for s in grill-me ponytail humanizer; do
+for s in grill-me ponytail humanizer asd-ste100; do
   [ -f ".agents/skills/$s/LICENSE" ] \
     && ok "$s ships the licence it is used under" \
     || bad "$s is vendored with no licence beside it"
@@ -167,13 +174,13 @@ for stage in grill plan task subtask build manifest commit brief findings close;
 done
 
 # The mode table and the skills that exist have to be the same set.
-for skill in grill-me tdd ponytail caveman humanizer feynman evidence points; do
+for skill in grill-me tdd ponytail caveman humanizer feynman evidence points asd-ste100; do
   grep -qi "$skill" "$R/AGENTS.md" \
     && ok "AGENTS.md maps $skill to modes" \
     || bad "$skill ships but AGENTS.md never says when to use it"
 done
-for tool in graph rtk; do
-  grep -qi "$tool" "$R/AGENTS.md" \
+for tool in graph rtk understand; do
+  grep -q ".agents/tools/$tool.md" "$R/AGENTS.md" \
     && ok "AGENTS.md names the $tool tool" \
     || bad "$tool ships but AGENTS.md never mentions it"
 done
@@ -265,7 +272,7 @@ printf '%s' "$orders" | grep -qE "^\| *use a skill or tool silently *\|" \
 # evidence and points are not per-mode: they are in force on every reply, in
 # every mode. The table ROW of each, with ON in all five mode columns -- a
 # loose grep for the name would pass with one mode quietly set to OFF.
-for skill in evidence points; do
+for skill in evidence points asd-ste100; do
   modes=$(awk '/^\| mode \|/{f=1;next} f&&/^\|---/{next} f&&/^\| \*\*/{print} f&&!/^\|/{exit}' "$R/AGENTS.md")
   col=$(awk '/^\| mode \|/{n=split($0,h,"|"); for(i=1;i<=n;i++){gsub(/ /,"",h[i]); if(h[i]=="'"$skill"'") print i}; exit}' "$R/AGENTS.md")
   offs=$(printf '%s\n' "$modes" | awk -F'|' -v c="$col" '{v=$c; gsub(/[ *]/,"",v); if (v!="ON") print}')
@@ -291,7 +298,7 @@ printf '\nthe vendored grill is untouched\n'
 # vendored, it is forked.
 # Vendored byte-for-byte. A size that drifts means somebody edited someone
 # else's file in place, which is a fork wearing a vendor's name.
-for pair in "ponytail 6637" "humanizer 28728"; do
+for pair in "ponytail 6637" "humanizer 28728" "asd-ste100 16430"; do
   set -- $pair
   n=$(wc -c < "$R/.agents/skills/$1/SKILL.md" | tr -d ' ')
   [ "$n" = "$2" ] && ok "$1/SKILL.md is $2 bytes, as upstream" \
@@ -300,6 +307,9 @@ done
 grep -q 'Matt Pocock' "$R/.agents/skills/grill-me/LICENSE" \
   && ok "grill-me carries Matt Pocock's licence" \
   || bad "grill-me's licence is missing or wrong"
+n=$(wc -c < "$R/.agents/skills/asd-ste100/scripts/ste-lint.py" | tr -d ' ')
+[ "$n" = 181763 ] && ok "ste-lint.py is 181763 bytes, as upstream" \
+                 || bad "ste-lint.py is $n bytes, upstream is 181763 — it has been edited"
 grep -qi 'DietrichGebert' "$R/.agents/skills/ponytail/LICENSE" \
   && ok "ponytail carries its author's licence" \
   || bad "ponytail's licence is missing or wrong"
@@ -359,6 +369,32 @@ payload() {  # message, [session], [stop_hook_active]
 for i in 1 2; do verdict "$(payload 'bad `src/net.js:1`' loop)" >/dev/null; done
 [ "$(verdict "$(payload 'bad `src/net.js:1`' loop)")" = PASS ] \
   && ok "the hook gives up after two blocks on one session" || bad "the hook can block the same session forever"
+
+# The reply it blocks has already been shown. Whatever the agent sends next
+# is shown too, so the reason must ask for the corrections only -- not the
+# whole reply again, which is the duplicate the developer then reads twice.
+reason=$(printf '%s' "$(payload 'It retries in `src/net.js:12`.')" | node "$HOOK" 2>/dev/null)
+printf '%s' "$reason" | grep -q 'Do not repeat' \
+  && ok "a block asks for the corrections only, not the reply again" \
+  || bad "a block makes the agent send the whole reply a second time"
+
+# Real files, written the ways agents actually write them. Each of these was
+# reported as missing while it sat on disk.
+mkdir -p "$E/pkg/sub" "$TMP/sib/lib"
+printf 'a\nb\n' > "$E/pkg/sub/mod.py"; printf 'x\n' > "$TMP/sib/lib/z.py"
+[ "$(verdict "$(payload 'See `src\app.js:2`.')")" = PASS ] \
+  && ok "a Windows backslash path to a real file passes" || bad "a backslash path to a real file was blocked"
+[ "$(verdict "$(payload "See \`$E/src/app.js:3\`.")")" = PASS ] \
+  && ok "an absolute path to a real file passes" || bad "an absolute path to a real file was blocked"
+[ "$(verdict "$(payload 'See `sub/mod.py:2`.')")" = PASS ] \
+  && ok "a path relative to a subdirectory of the workspace passes" || bad "a real file under a subdirectory was reported missing"
+[ "$(verdict "$(payload 'See `../sib/lib/z.py:1`.')")" = PASS ] \
+  && ok "a path into a sibling directory passes" || bad "a real file in a sibling directory was reported missing"
+[ "$(verdict "$(payload "See \`$E/src/app.js:9\`.")")" = BLOCK ] \
+  && ok "an absolute path past the end of the file is still sent back" || bad "absolute paths skip the line check"
+printf '%s' "$reason" | grep -q "$E" \
+  && ok "a missing file is reported with the directory it was looked for from" \
+  || bad "a missing-file block does not say where it looked"
 
 for f in .claude/settings.json .codex/hooks.json; do
   grep -q 'check-evidence.js' "$R/$f" 2>/dev/null \
