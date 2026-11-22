@@ -32,7 +32,7 @@ const SRC = path.join(HOME, '.agents');
 // Code reads skills from that path and nowhere else, and a skill nobody's
 // runtime loads is the bug this vendoring exists to fix. Any other runtime
 // is pointed at .agents/skills/, which is the canonical copy.
-const SKILLS = ['grill-me', 'tdd', 'ponytail', 'caveman', 'humanizer', 'feynman', 'evidence', 'points', 'asd-ste100'];
+const SKILLS = ['grill-me', 'tdd', 'ponytail', 'humanizer', 'feynman', 'evidence', 'points', 'asd-ste100', 'replan'];
 
 // Four of the nine are somebody else's work, vendored under their own
 // licence, and the licence travels in the same directory as the file it
@@ -60,8 +60,8 @@ const DOCS = ['CONTEXT.md', 'ARCHITECTURE.md', 'RULES.md'];
 
 // The work-product templates stay under .agents/templates/ and are copied by
 // the AGENT when it reaches that stage -- never by init. Shipping a
-// pre-made .agents/plan.md would be shipping half a change.
-const TEMPLATES = ['plan.md', 'task.md', 'manifest.md', 'review.md'];
+// pre-made .agents/goals/G1/ would be shipping half a change.
+const TEMPLATES = ['goal.md', 'plan.md', 'task.md', 'manifest.md', 'review.md'];
 
 // The one thing that runs. The evidence skill is advice; this is the gate
 // behind it: Claude Code and Codex both call the script when a reply is about

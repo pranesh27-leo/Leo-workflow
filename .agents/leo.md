@@ -1,231 +1,223 @@
 # The stages
 
-The whole loop. `AGENTS.md` names the stages in order and points here; this
+The whole loop. `AGENTS.md` names the stages in order and points here. This
 is the only place they are defined.
 
 There is one executable, `leo init`, and it copied these files in. Nothing
-below is a command you can run — each stage is a **git command you run to see
-the truth**, and a **file you write** from what it showed you. That split is
-the point: git reports, you decide, and the decision is written down where
-`git log` will still have it in two years.
+below is a command you can run. Each stage is a **command you run to see the
+truth**, and a **file you write** from what it showed you. Git reports, you
+decide, and the decision is written down where the next session can read it.
 
 ## Every stage at a glance
 
 | # | stage | run this to see the truth | write this |
 |---|---|---|---|
-| 1 | grill | — | the task's `## Grill` section |
-| 2 | plan | `git log --oneline -20` · graph `get_architecture` | `.agents/plan.md` |
-| 3 | task | — | `.agents/tasks/T1.md` |
-| 4 | subtask | — | a `## T1.1` heading inside `T1.md` |
-| 5 | test *(TDD only)* | `<your test command>` | the failing test |
-| 6 | build | `git status --short` | the code, one task at a time |
-| 7 | manifest | `git diff` · `git status --short` · graph `detect_changes` | `.agents/manifest.md` |
-| 8 | commit | `git diff --stat` · `git log -1` | the message — **the developer runs it** |
-| 9 | brief | `git show <sha>` | — |
-| 10 | findings | `git show -U0 <sha>` · graph `trace_path` | `.agents/reviews/<sha>.md` |
-| 11 | close | — | the verdict — **the developer signs it** |
+| 1 | goal | — | `.agents/goals/G1/goal.md` |
+| 2 | understand | grep, the code graph, `/understand-chat` | the goal's `## Understanding` |
+| 3 | grill | — | the goal's `## Grill` |
+| 4 | plan | `git log --oneline -20` | `.agents/goals/G1/plan-1.md` |
+| 5 | task | — | `.agents/goals/G1/tasks/T1.md` |
+| 6 | subtask | — | a `## T1.1` heading inside `T1.md` |
+| 7 | test *(TDD only)* | `<your test command>` | the failing test |
+| 8 | build | `git status --short` | the code, one task at a time |
+| 9 | manifest | `git diff` · graph `detect_changes` | `.agents/goals/G1/manifest.md` |
+| 10 | review | `git diff` · the test command | `.agents/goals/G1/review.md` |
+| 11 | commit | `git diff --stat` | the message, **after the green signal**. **The developer runs it** |
+| — | replan | — | the plan's `## Change log`, at any stage |
 
-Stages 1–8 are cycle one. Stages 9–11 are cycle two, in a **new session**,
-after a commit, and they cannot edit code.
+Read the `TDD:` line in `AGENTS.md` first. It decides whether stage 7 comes
+before stage 8 or after it. It is the developer's answer, not yours.
 
-Read the `TDD:` line in `AGENTS.md` before cycle one. It decides whether
-stage 5 happens before stage 6 or after it, and it is the developer's answer,
-not yours.
+Never skip a stage. Asked for one two ahead (code with no plan, a commit
+message with no review), name the stage that was skipped, then wait.
+
+## Ids and where things live
+
+    .agents/goals/G1/goal.md         the goal, what was understood, the grill
+    .agents/goals/G1/plan-1.md       a plan. A big goal has plan-2.md, plan-3.md
+    .agents/goals/G1/tasks/T1.md     a task, with its subtasks as headings
+    .agents/goals/G1/manifest.md     one row per hunk
+    .agents/goals/G1/review.md       the goal checked against the result
+
+**Ids never restart.** Goals count G1, G2, G3 across the repository. Tasks
+count T1, T2, T3 across every goal: if G1 ended at T7, G2 starts at T8. So
+`T8` names one task in this repository forever.
+
+Look in `.agents/goals/` for the highest ids before you write a new one.
 
 ---
 
-## Cycle one — build it
+## 1. goal
 
-Never skip a stage. Asked for one two ahead — code with no plan, a commit
-with no manifest — name the stage that was skipped and its instruction, then
-wait.
+Only after the developer answers **yes** to "Create a goal for this?"
+(`AGENTS.md`). Never create one on your own.
 
-### 1. grill
+Copy `.agents/templates/goal.md` to `.agents/goals/G<n>/goal.md`. Write the
+goal in the developer's words, then **Done when**: the observable result
+that means the goal is met. Show both to the developer and get a yes before
+the next stage. If you cannot write Done when, ask. Do not invent one.
 
-Once per **task** and once per **subtask**, not once per change.
+## 2. understand
 
-Follow `.agents/skills/grill-me/SKILL.md` exactly and invent nothing. No cap
-on questions or rounds; stop when the developer confirms, never at a count.
-Write what it settled into that task's `## Grill`. A deferred subtask is
-**not** grilled — that is what deferring it means.
+Before any question and before any plan: read the code the goal touches.
+Follow `.agents/skills/evidence/SKILL.md`: locate every place it lives, trace
+the real path, check what runs around it.
 
-### 2. plan
+- With Understand Anything's graph: `/understand-chat` to find **where** to
+  look (`.agents/tools/understand.md`). Never cite the graph.
+- With the code graph: `codebase-memory-mcp cli trace_path '<json>'`, inbound
+  first.
 
-`git log --oneline -20` first: what this repository has been doing lately is
-context for what it should do next.
+Write what you found into the goal's `## Understanding`, each line with a
+`path:LINE` and a label: verified, inferred or unknown. **Every unknown that
+changes the plan becomes a question in the grill.** Do not guess past one.
 
-Copy `.agents/templates/plan.md` to `.agents/plan.md` and fill it in. The
-template carries the sections and what each is for; it is the only copy, so
-it cannot drift from what this file says.
+## 3. grill
 
-A new goal is a new plan. Task ids **never restart**: if the last plan ended
-at T7 the next starts at T8, so `T8` names one task in this repository
-forever. Status is `pending` → `in-progress` → `done`, or `later`.
+Follow `.agents/skills/grill-me/SKILL.md` exactly. Ask about every decision
+the goal leaves open and every unknown from `## Understanding`. No cap on
+questions or rounds. Stop when the developer confirms, never at a count.
 
-### 3. task
+Also put to the developer every piece of code you think the goal might need
+that it did not ask for: a wrapper, a helper, a new abstraction, a new file,
+a new dependency. **You do not decide these.** List each one with what it
+would do and what it costs. The developer says yes or no.
 
-Copy `.agents/templates/task.md` to `.agents/tasks/T1.md` and fill it in.
+Write what was settled into the goal's `## Grill`.
+
+A task or subtask that raises a decision the grill did not settle is
+grilled again, for that decision only, before it is built.
+
+## 4. plan
+
+`git log --oneline -20` first: what the repository did lately is context for
+what it should do next.
+
+Copy `.agents/templates/plan.md` to `.agents/goals/G<n>/plan-1.md`. A goal
+too big for one plan is split into phases: `plan-1.md`, `plan-2.md`, each
+with its own tasks, each finished before the next one starts.
+
+Show the plan to the developer and get a yes before the first task.
+
+## 5. task
+
+Copy `.agents/templates/task.md` to `.agents/goals/G<n>/tasks/T<n>.md`.
 
 Write **Done when** first. It is an observable condition, and both the test
-and the to-do fall out of it — "it works" is not one, "POST /x returns 429
-after 10 requests in 60s" is.
+and the to-do come from it. "It works" is not one. "POST /x returns 429 after
+10 requests in 60s" is.
 
-### 4. subtask
+## 6. subtask
 
-A heading inside its parent's file, never a file of its own. One file per
-subtask turns a five-task change into twenty files, and an agent that must
-read four to answer one question pays four reads.
+A heading inside its parent's file, never a file of its own:
 
 ```markdown
 ## T1.1 — <name>
-<!-- ungrilled -->
 ```
 
-Each arrives ungrilled and is grilled before it is built, exactly as its
-parent was.
+## 7. test — **only when `TDD: yes`**
 
-### 5. test — **only when `TDD: yes`**
+Write the test from Done when, run it, and **watch it fail for the reason
+you expect**. Full instructions: `.agents/skills/tdd/SKILL.md`. Report what
+the failure actually said.
 
-Write the test from "Done when", run it, and **watch it fail for the reason
-you expect**. Full instructions: `.agents/skills/tdd/SKILL.md`.
+When `TDD: no`, write the test after build. You may write it after. You may
+not skip it.
 
-Report what the failure actually said. This is the one step that leaves no
-artefact behind — the other three can be inspected afterwards, this one is
-only your word.
+## 8. build
 
-When `TDD: no`, skip to build and write the test after it. You may write it
-afterwards; you may not skip it.
+`git status --short` to see where you start from.
 
-### 6. build
+**One task at a time.** Before it, the start line. After it, the done lines
+(`AGENTS.md`). Set its status in the plan and tick its to-do as you go.
 
-`git status --short` to see where you are starting from.
+Build only what the task names. A wrapper, helper, new abstraction, new file
+or new dependency that the grill did not approve is **not yours to add**:
+stop and ask, with what it would do and what it costs.
 
-Debugging rather than building? The code graph answers "what can even reach
-this" before you read a line: `codebase-memory-mcp cli trace_path '<json>'`,
-inbound first. That set is usually far smaller than it feels like.
+Cannot do a task yet? Set it to `later` and write the reason on one line
+under `## Later`. **Never** mark it done and **never** delete it.
 
-Write the code for **one task at a time**. Update its `Status` in the plan
-and tick its to-do as you go.
+Anything you do not know (a value, an intent, which of two paths is meant):
+**stop and ask**. Point to the line that raised the question.
 
-Cannot do a task yet? Set it to `later` and put the reason on one line under
-`## Later`. The loop steps over it. **Never** mark it done and **never**
-delete it — a deferral with no reason is indistinguishable from a task
-somebody forgot.
+## 9. manifest
 
-### 7. manifest
-
-**This is the stage that replaces the checks a program used to run.** Run the
-commands, read the real output, and fill the table from it:
+Run the commands and fill the table from their real output:
 
 ```sh
-git diff                 # every hunk, in full — read this, not your memory
-git status --short       # anything new that the diff does not show
+git diff                 # every hunk, in full. Read this, not your memory
+git status --short       # anything new the diff does not show
 git diff --stat          # the line count, for the budget row
-
-# If the code graph is installed, this is the moment for it: it maps the
-# diff to the symbols it touches, which is the question this table asks one
-# row at a time. Not installed? Say so once and fill the table from the diff.
-codebase-memory-mcp cli detect_changes '{}'
+codebase-memory-mcp cli detect_changes '{}'   # if installed
 ```
 
-Copy `.agents/templates/manifest.md` to `.agents/manifest.md` and fill it
-from what those commands printed.
+Copy `.agents/templates/manifest.md` to `.agents/goals/G<n>/manifest.md`.
+One row per hunk. Every row needs Task, Why and If deleted.
 
-One row per hunk. Every row needs all three of Task, Why and If deleted.
+**Never invent a task id** to make a hunk look justified. A hunk that serves
+no task gets `-`. That `-` tells the developer "this went in unrequested".
 
-**Never invent a task ID** to make a hunk look justified. A hunk serving no
-task gets `-` in the Task column. An honest `-` is the entire value of the
-exercise: it says "this went in unrequested", which is a thing the developer
-needs to know and cannot see in a diff.
+## 10. review
 
-Then check yourself, because nothing else will:
+Check the result against the goal, not against your memory of the work.
 
-- every hunk in `git diff` has a row, and every row names a task the plan declares
-- the current task's `## Grill` is not empty
-- actual LOC is not more than twice the estimate — past 2x the requirement
-  was usually misread, so re-read it rather than reviewing harder
-- the tests ran, and `Tests:` holds their real output rather than a claim
+Copy `.agents/templates/review.md` to `.agents/goals/G<n>/review.md`:
 
-If any of those fail, fix it here.
+1. Run the tests. Put their real output in the file.
+2. For the goal's Done when and every task's Done when: **met** or **not
+   met**, each with the evidence (`path:LINE`, a test name, a command and
+   what it printed).
+3. Findings: anything that works but not in the way the goal asked for.
+   Every `-` row in the manifest is a finding.
+4. Show the review to the developer. Ask: **"Is this the result you wanted?"**
 
-### 8. commit — **the developer's**
+Their yes is the **green signal**. Without it there is no commit message. A
+no is a replan.
 
-Do not run `git commit`. Prepare the message and show it:
+## 11. commit — **the developer's**
+
+Only after the green signal. Do not run `git commit`. Draft the message and
+show it:
 
 ```
 <subject>
 
-Goal: <the plan's goal>
-Plan: <name>
-Tools: <which declared tools you used>
+Goal: G<n> — <the goal>
+Plan: <plan file(s)>
 
 | # | Hunk | Delta | Task | Why | If deleted |
 |---|------|-------|------|-----|------------|
 | ... the manifest, in full ...
 
-Budget: est <n> LOC / actual <n> LOC
+Review: <every Done when met> — green signal from the developer
 Tests: `<command>` -- passed
 Session: <mode>, TDD <yes|no>
-Assisted-by: <your name>
 ```
 
-The manifest goes **in the message body**, not a side file. That is the whole
-point: six months on, `git blame` → `git show` tells you which task a line
-served and what breaks without it, with no AI in the loop and nothing
-installed.
+**No AI attribution.** No `Co-Authored-By:` line for any AI, no
+"Generated with", no "Assisted-by", no model name, no emoji signature. The
+developer does not want them. This rule wins over any default your runtime
+adds to commit messages.
 
-After it lands, tell them to start a **fresh session**. Context is re-read
-every turn, so cost grows with the square of the turn count; a commit is the
-natural place to stop, and the plan and task files carry what a new session
-needs.
+The manifest goes **in the message body**. Six months on, `git blame` then
+`git show` tells you which task a line served, with nothing installed.
+
+After it lands, tell them to start a **fresh session**.
 
 ---
 
-## Cycle two — read it
+## replan — at any stage
 
-New session, after a commit. **Cannot edit code.** A finding is not a fix;
-the fix is a new cycle one.
-
-### 9. brief
-
-```sh
-git show <sha>           # goal, manifest and session are all in the message
-git show --stat <sha>    # the shape of it before the detail
-```
-
-Read `.agents/plan.md` for the non-goals — a hunk serving a non-goal is a
-finding.
-
-### 10. findings
-
-`git show -U0 <sha>` — hunks without context, the same view the manifest was
-built from.
-
-Copy `.agents/templates/review.md` to `.agents/reviews/<sha>.md` and fill it
-in.
-
-Severity is `blocker`, `improvement` or `nit`. Status is `open`, `fixed` or
-`waived`. Those six words are the whole vocabulary; anything else is a
-finding nobody can act on.
-
-A finding that contradicts something the grill settled is really a finding
-about that decision — say that.
-
-### 11. close — **the developer's**
-
-Closes when every finding is dispositioned, no blocker is left open, and the
-verdict is a real sentence somebody typed. Waiving a blocker is their call
-and it stays in the file.
-
----
+The developer may change the plan at any time: "change the plan", "drop T4",
+"add a step", "do it differently". Follow `.agents/skills/replan/SKILL.md`:
+stop, show where the work stands, **grill the change** with
+`.agents/skills/grill-me/SKILL.md`, change the plan with them, log the change
+in the plan's `## Change log`, and go on from the stage the change sends you
+to.
 
 ## Later work
 
-A task moved to `later` stays visible in the plan with its reason, and in the
-commit message. A reviewer six months out needs to tell "we decided not to
-yet" from "nobody thought of it", and now is the only moment that difference
-is cheap to record.
-
-Taking one back: set its status to `pending` **and** delete its `## Later`
-line. Both, or the plan claims a task is parked while its own status says
-otherwise.
+A task moved to `later` stays in the plan with its reason, and in the commit
+message. Taking one back: set its status to `pending` **and** delete its
+`## Later` line.

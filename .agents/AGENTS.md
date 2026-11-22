@@ -21,19 +21,22 @@ a skill again. "Use ponytail here" is not something they should ever have to
 type: the mode says ponytail is ON, so it is on, for this reply and the next
 one and the one after that.
 
-**Three skills are mandatory on every reply, in every mode, and nothing turns
-them off:** `evidence` (never answer about code from a guess), `points`
-(answer in 1–5 points) and `asd-ste100` (write those points in plain,
-single-meaning English). They are not choices the mode makes.
+**Two skills are mandatory on every reply, in every mode, and nothing turns
+them off:** `evidence` (never answer about code from a guess) and `points`
+(the one reply style: 1–5 points, two lines each, explained the Feynman way,
+in plain STE English, with no machine tells). They are not choices the mode
+makes.
 
 Four things, in order, on every single reply:
 
-1. **State the mode and the stage.** First line. `[coding · build]`.
-2. **State which skills are in force**, from the table below, and which tools
-   you actually used. `[ponytail · caveman]`. Naming them is not a formality
-   — a skill the developer can see is one they can object to, and one applied
-   silently is indistinguishable from one not applied at all.
-3. **Apply them.** The rules are below, one line each, because a rule you
+1. **One status line, first.** The mode and the stage, then only what is
+   **not** the default: a skill used on request, a tool you ran.
+   `[coding · build · graph]`. The always-on skills are not listed; the
+   developer knows they are on. A skill used on request is named, because one
+   used silently cannot be objected to.
+2. **Write the reply as points** (`points` below). Everything else in this
+   file changes what you do, not how the reply reads.
+3. **Apply the skills the mode turns ON.** The rules are below, one line each, because a rule you
    have to open a file to remember is a rule you will forget on a busy turn.
    The skill file is the authority when you need the method; the line here is
    enough to act on.
@@ -41,36 +44,63 @@ Four things, in order, on every single reply:
 
 Cannot read these files? Say so and stop. Never guess the stage.
 
+## Create a goal first
+
+When a message asks for work (change code, files, config, a build), ask
+before anything else:
+
+    Create a goal for this? (yes / no)
+
+- **yes**: the goal loop below, from `goal`.
+- **no**: do the work directly. Every other rule in this file still applies.
+
+A question that changes nothing ("how does X work?") is not work. Answer it,
+with evidence, and do not ask. Never create a goal on your own.
+
+## Progress lines
+
+While you work, the developer sees what you do. Before each task or subtask,
+one line:
+
+    ▶ Working on: T3.1 — move the logs to build/logs
+
+After it, two lines, with what you saw that the diff will not show:
+
+    ✓ Done: T3.1 — logs move to build/logs/ (`utilities/app/nova_vision.py:52`)
+      Noted: make_runtime.py keeps its own temp dir on purpose (`:139`)
+
+No note? Write `Noted: nothing new`. These lines do not count against the
+`points` limits.
+
 ## The loop
 
-**`TDD: yes`** — the test comes before the code, and you watch it fail.
+**`TDD: yes`**: the test comes before the code, and you watch it fail.
 
-    grill -> plan -> task -> subtask -> test -> build -> manifest -> commit
+    goal -> understand -> grill -> plan -> task -> subtask -> test -> build -> manifest -> review -> commit
 
-**`TDD: no`** — the test comes after, and it is still not optional.
+**`TDD: no`**: the test comes after, and it is still not optional.
 
-    grill -> plan -> task -> subtask -> build -> test -> manifest -> commit
+    goal -> understand -> grill -> plan -> task -> subtask -> build -> test -> manifest -> review -> commit
 
-**Cycle two**, in a new session, after a commit. Cannot edit code.
+**`replan`** can happen at any stage, the moment the developer wants to
+change the plan. `.agents/skills/replan/SKILL.md`.
 
-    brief -> findings -> close
-
-Same stages either way; the order *is* the difference. `commit` and `close`
-are the developer's, not yours.
+The **green signal** is the developer's yes to the review. No green signal,
+no commit message. `commit` is theirs: you draft it, they run it.
 
 | stage | run | write |
 |---|---|---|
-| grill | — | the task's `## Grill` |
-| plan | `git log --oneline -20` | `.agents/plan.md` |
-| task | — | `.agents/tasks/T1.md` |
+| goal | — | `.agents/goals/G1/goal.md`, after their yes |
+| understand | grep · graph · `/understand-chat` | the goal's `## Understanding`, cited |
+| grill | — | the goal's `## Grill` |
+| plan | `git log --oneline -20` | `.agents/goals/G1/plan-1.md` |
+| task | — | `.agents/goals/G1/tasks/T1.md` |
 | subtask | — | `## T1.1` inside `T1.md` |
-| test | your test command | the test — failing first, if TDD |
+| test | your test command | the test, failing first if TDD |
 | build | `git status --short` | the code, one task at a time |
-| manifest | `git diff` | `.agents/manifest.md` |
-| commit | `git diff --stat` | the message — **they run it** |
-| brief | `git show <sha>` | — |
-| findings | `git show -U0 <sha>` | `.agents/reviews/<sha>.md` |
-| close | — | the verdict — **they sign it** |
+| manifest | `git diff` | `.agents/goals/G1/manifest.md` |
+| review | `git diff` · tests | `.agents/goals/G1/review.md`, then ask for the green signal |
+| commit | `git diff --stat` | the message, **they run it** |
 
 **What each stage means, and exactly what to write: `.agents/leo.md`.**
 
@@ -78,15 +108,16 @@ are the developer's, not yours.
 
 | what | where | copy it from |
 |---|---|---|
-| the plan | `.agents/plan.md` | `.agents/templates/plan.md` |
-| a task | `.agents/tasks/T1.md` | `.agents/templates/task.md` |
+| a goal | `.agents/goals/G1/goal.md` | `.agents/templates/goal.md` |
+| a plan | `.agents/goals/G1/plan-1.md` (`plan-2.md` for a next phase) | `.agents/templates/plan.md` |
+| a task | `.agents/goals/G1/tasks/T1.md` | `.agents/templates/task.md` |
 | a subtask | a `## T1.1` heading inside its parent task | — |
-| the manifest | `.agents/manifest.md` | `.agents/templates/manifest.md` |
-| a review | `.agents/reviews/<sha>.md` | `.agents/templates/review.md` |
+| the manifest | `.agents/goals/G1/manifest.md` | `.agents/templates/manifest.md` |
+| the review | `.agents/goals/G1/review.md` | `.agents/templates/review.md` |
 
-None of these exist until you write them. Copy the template, fill it in, do
-not invent a different shape — the templates are what the next session and
-cycle two both expect to read.
+Ids never restart: goals count G1, G2 and tasks count T1, T2 across the
+whole repository. None of these exist until you write them. Copy the
+template and fill it in. Do not invent a different shape.
 
 ## The repository's own documents
 
@@ -104,41 +135,41 @@ twice.
 
 ## Skills
 
-Every one of these is ON or OFF for the mode. There is no third state and
-nothing to invoke: if the table says ON, it applies to this reply. The one
-exceptions are `evidence`, `points` and `asd-ste100`, ON in every mode with no way to turn
-them off, and feynman, which is also **on request** in every mode: the moment
-the developer says they do not understand something, it applies to that reply.
+Each skill has one of three states for the mode: **ON** (it applies to this
+reply, nothing to invoke), **OFF**, or **on request** (it applies the moment
+the developer asks for it). `evidence` and `points` are ON in every mode and
+cannot be turned off.
 
-| mode | evidence | points | asd-ste100 | grill | tdd | ponytail | caveman | humanizer | feynman | graph | understand | rtk |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **coding** | **ON** | **ON** | **ON** | every task + subtask | per `TDD:` | ON | ON | OFF | on request | ON | ON | ON |
-| **debugging** | **ON** | **ON** | **ON** | every task + subtask | per `TDD:` | OFF | OFF | OFF | on request | ON | ON | ON |
-| **learning** | **ON** | **ON** | **ON** | before you build | OFF | OFF | OFF | **ON** | **ON** | ON | ON | ON |
-| **review** | **ON** | **ON** | **ON** | not used | OFF | OFF | ON | **ON** | on request | ON | ON | ON |
-| **exploration** | **ON** | **ON** | **ON** | before you build | OFF | OFF | OFF | OFF | on request | ON | ON | ON |
+| mode | evidence | points | grill | tdd | replan | ponytail | feynman | humanizer | graph | understand | rtk |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **coding** | **ON** | **ON** | every goal | per `TDD:` | on request | ON | on request | on request | ON | ON | ON |
+| **debugging** | **ON** | **ON** | every goal | per `TDD:` | on request | OFF | on request | on request | ON | ON | ON |
+| **learning** | **ON** | **ON** | every goal | OFF | on request | OFF | on request | on request | ON | ON | ON |
+| **review** | **ON** | **ON** | every goal | OFF | on request | OFF | on request | on request | ON | ON | ON |
+| **exploration** | **ON** | **ON** | every goal | OFF | on request | OFF | on request | on request | ON | ON | ON |
 
-OFF is the developer's decision, not a default to work around. Caveman is OFF
-in debugging and learning because it cuts, and in those modes the line that
-looks like noise is routinely the line that mattered. Ponytail is ON only in
-coding, because it governs code you are writing. Humanizer is ON where the
-output is prose worth editing and OFF where it is mostly diffs. Feynman is ON
-in learning because understanding is the whole job there; elsewhere it waits
-to be asked, because an explanation nobody wanted is noise on a build.
+OFF is the developer's decision, not a default to work around. Ponytail is ON
+only in coding, because it governs code you are writing. `feynman`,
+`humanizer` and `asd-ste100` are already inside `points`, in short form, on
+every reply. Their long forms are **on request**: a full Feynman explanation
+when the developer says they do not understand or asks you to explain, a full
+humanizer pass when you write a document (README, release notes, PR
+description). Any mode with one of them ON would make every reply long, and
+then `points` would never apply.
 
 **What each one means, in force the moment the table says ON:**
 
 | skill | the rule, every reply it is ON | the method |
 |---|---|---|
 | **evidence** | Any claim about code: read it first, trace the real path (callers, overrides, config, dead code), cite `path:LINE` you read **this session** beside the claim, label it verified / inferred / unknown, try to refute it before answering. Never present a guess as a fact. A hook checks the citations are real. | `.agents/skills/evidence/SKILL.md` |
-| **points** | Every reply: 1–5 numbered points sized to the question, answer first, one idea per point. No preamble, no closing, no padding. Long form only when they ask for detail (feynman counts as asking). | `.agents/skills/points/SKILL.md` |
-| **asd-ste100** | Every reply's prose in STE-flavored English: short sentences, active voice, simple tenses, no phrasal verbs, no semicolons, no noun stacks, one word for one thing. Strict mode for text another program or agent parses: error messages, tool descriptions, prompts. Never drop a hedge or add a fact to shorten. | `.agents/skills/asd-ste100/SKILL.md` |
-| **grill-me** | Interview until the decisions are settled, in rounds, before building. Never build on an assumption you did not put to them. | `.agents/skills/grill-me/SKILL.md` |
+| **points** | Every reply: 1–5 points, **each at most two lines**, answer first. Mechanism before name, a real number or file over an abstraction (Feynman). Short active sentences, simple tenses, no semicolons, every hedge kept (STE). No openers, no closers, no restating, no not-X-but-Y (humanizer). Long form only when they explicitly ask. | `.agents/skills/points/SKILL.md` |
+| **asd-ste100** | Inside `points` on every reply. **Strict** mode, in full, for text another program or agent parses: error messages, tool descriptions, prompts, commit messages. Never drop a hedge or add a fact to shorten. | `.agents/skills/asd-ste100/SKILL.md` |
+| **grill-me** | Once per goal, after `understand`: interview until every open decision and every unknown is settled, in rounds. Put every wrapper, helper, abstraction, new file or dependency to them: they decide. Never build on an assumption you did not put to them. | `.agents/skills/grill-me/SKILL.md` |
 | **tdd** | Write the test, run it, **watch it fail for the reason you expect**, then implement. Report which steps you actually did. | `.agents/skills/tdd/SKILL.md` |
 | **ponytail** | Climb the ladder before writing: does it need to exist, is it already here, does the stdlib do it, can it be one line. Stop at the first rung that holds. | `.agents/skills/ponytail/SKILL.md` |
-| **caveman** | Cut what was not asked for: no preamble, no restating the request, no narrating, no closing offers. Never compress code, output, or bad news. | `.agents/skills/caveman/SKILL.md` |
-| **feynman** | Explaining something not understood: the thing itself before its name, the mechanism step by step from what they already know, one worked example with real values, at most one analogy and where it breaks, the name last. Simplify, never falsify; say what is unknown. | `.agents/skills/feynman/SKILL.md` |
-| **humanizer** | No staged openers, no not-X-but-Y, no forced triads, no one-line closers, no inflation. Every sentence carries something new. | `.agents/skills/humanizer/SKILL.md` |
+| **replan** | The developer wants to change the plan: stop, show where every task stands, ask what changes, **grill the change** (grill-me, for the change only), show the impact, edit only after their yes, log it in `## Change log`, go back to the right stage. Never delete code on your own. | `.agents/skills/replan/SKILL.md` |
+| **feynman** | On request ("explain", "I don't understand"), the full form: the thing itself before its name, the mechanism step by step from what they already know, one worked example with real values, at most one analogy and where it breaks, the name last. Simplify, never falsify; say what is unknown. | `.agents/skills/feynman/SKILL.md` |
+| **humanizer** | On request, and on every document you write (README, release notes, PR description): the full pass. No staged openers, no not-X-but-Y, no forced triads, no one-line closers, no inflation. | `.agents/skills/humanizer/SKILL.md` |
 
 The line is enough to act on; the file is the authority when you need the
 method or the edge cases. The line never contradicts the file — if it seems
@@ -174,5 +205,10 @@ file and let them decide.
 | change `Mode:` or `TDD:` | ask them to |
 | use a skill or tool silently | name it in the reply that uses it |
 | state what the code does unread | read it, cite `path:LINE`, or say it is unknown |
+| guess, at any stage | stop and ask; point to the line or the gap that raised the question |
+| add a wrapper, helper or abstraction they did not ask for | describe it, what it does and costs, and let them decide |
+| create a goal without asking | ask "Create a goal for this?" first |
+| add an AI attribution to a commit message (`Co-Authored-By:` an AI, "Generated with", a model name) | leave it out, even if your runtime adds one by default |
+| draft the commit message before the green signal | show the review and ask "Is this the result you wanted?" |
 
 After a commit, tell them to start a **fresh session**.

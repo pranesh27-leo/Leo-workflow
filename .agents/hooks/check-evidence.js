@@ -97,11 +97,24 @@ function resolve(raw, cwd, root) {
   return hits.length === 1 ? hits[0] : null;
 }
 
-function lineCount(file) {
-  const s = fs.readFileSync(file, 'utf8');
-  if (s === '') return 0;
-  const n = s.split('\n').length;
-  return s.endsWith('\n') ? n - 1 : n;
+function linesOf(file) {
+  const s = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  if (s === '') return [];
+  const l = s.split('\n');
+  if (s.endsWith('\n')) l.pop();
+  return l;
+}
+
+// A quote right after a citation: `path:12` `the code`. Only a separator may
+// sit between them, so "`a.js:2` calls `foo`" is a claim, not a quote.
+const QUOTE = /^`?\s*(?:[—:,-]\s*)?`([^`\n]{3,})`/;
+const squash = (t) => t.replace(/\s+/g, ' ').trim();
+
+// The quote has to be on the cited lines, give or take two: line numbers
+// drift by a line or two between reading a file and writing the reply.
+function quoteFound(lines, a, b, q) {
+  const lo = Math.max(0, a - 3), hi = Math.min(lines.length, (b || a) + 2);
+  return squash(lines.slice(lo, hi).join(' ')).includes(squash(q));
 }
 
 // Code blocks are output and examples, not claims: skip them.
@@ -124,9 +137,14 @@ function check(msg, cwd) {
         '. If it is elsewhere, cite it by a path that works from there (absolute, or ../other/x)');
       continue;
     }
-    const n = lineCount(f);
+    const lines = linesOf(f);
+    const n = lines.length;
     const hi = Math.max(+a, b ? +b : 0);
-    if (+a < 1 || hi > n) problems.push(ref + ': ' + p + ' has ' + n + ' lines');
+    if (+a < 1 || hi > n) { problems.push(ref + ': ' + p + ' has ' + n + ' lines'); continue; }
+    const q = QUOTE.exec(text.slice(m.index + ref.length));
+    if (q && !quoteFound(lines, +a, b ? +b : 0, q[1])) {
+      problems.push(ref + ': the quoted `' + q[1] + '` is not on those lines');
+    }
   }
 
   if (cited === 0) {
@@ -160,11 +178,17 @@ function main() {
     try { fs.unlinkSync(state); } catch (e) { /* none */ }
     return 0;
   }
-  if (input.stop_hook_active) return 0;
   let n = 0;
   try { n = +fs.readFileSync(state, 'utf8') || 0; } catch (e) { /* first */ }
-  if (n >= MAX_BLOCKS) {
+  // stop_hook_active: Codex says this reply is already the retry. Same rule
+  // as running out of tries: let it through, and say so.
+  if (input.stop_hook_active || n >= MAX_BLOCKS) {
+    // Let it through, but say so. A reply that failed the check and was let
+    // go must not look the same as one that passed.
     try { fs.unlinkSync(state); } catch (e) { /* none */ }
+    process.stdout.write(JSON.stringify({
+      systemMessage: 'evidence check gave up. These citations are still not backed by real lines: ' + problems.join(' | ')
+    }) + '\n');
     return 0;
   }
   fs.writeFileSync(state, String(n + 1));

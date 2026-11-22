@@ -1,6 +1,6 @@
 ---
 name: grill-me
-description: A relentless interview to sharpen a plan or design. Use before every task and every subtask, and whenever the user says "grill me".
+description: A relentless interview to sharpen a plan or design. Use once per goal, after the code is understood and before the plan; again for any new decision a task raises; and whenever the user says "grill me".
 disable-model-invocation: true
 license: MIT
 ---

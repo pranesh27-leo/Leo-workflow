@@ -20,18 +20,18 @@ each reply; nothing else watches, and there is nothing to keep installed.
 | `.agents/skills/grill-me/` | interview before building — *Matt Pocock's, adapted* |
 | `.agents/skills/tdd/` | test first, and watch it fail |
 | `.agents/skills/ponytail/` | what you build — *vendored, MIT* |
-| `.agents/skills/caveman/` | what you say — cut what was not asked for |
 | `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
 | `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
 | `.agents/skills/evidence/` | answers about code from the code, cited, never guessed — **every reply** |
-| `.agents/skills/points/` | every reply in 1–5 points — **every reply** |
-| `.agents/skills/asd-ste100/` | those points in plain, single-meaning English — **every reply**, *vendored, MIT* |
+| `.agents/skills/replan/` | change the plan mid-way: stop, show, agree, log |
+| `.agents/skills/points/` | the one reply style: 1–5 points, two lines each, Feynman + STE + humanizer in short form — **every reply** |
+| `.agents/skills/asd-ste100/` | plain, single-meaning English, inside `points`; strict for text a program parses — *vendored, MIT* |
 | `.agents/tools/understand.md` | Understand Anything — a knowledge graph to find where to look |
 | `.agents/hooks/check-evidence.js` | the gate behind `evidence`, for Claude Code and Codex |
 | `.claude/settings.json` · `.codex/hooks.json` | the hook, registered where each agent reads it |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
-| `.agents/templates/` | plan, task, manifest, review — copied when a stage needs one |
+| `.agents/templates/` | goal, plan, task, manifest, review — copied when a stage needs one |
 | `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
 | `.claude/skills/*/` | the same nine skills, where Claude Code reads them |
 
@@ -59,9 +59,15 @@ before reading a bug, because those moments are written beside the stages
 that want them. A tool that is not installed is reported **once** and then
 worked around, not announced every reply.
 
-The agent names which skills are in force and which tools it used, in every
-reply. A skill you can see being applied is one you can object to; one
-applied silently is indistinguishable from one not applied at all.
+Every reply opens with one status line: the mode, the stage, and only what
+is not the default, such as a skill used on request or a tool it ran
+(`[coding · build · graph]`). The always-on skills are not listed every time.
+
+Then the reply itself is **points**: 1–5 of them, each at most two lines. A
+point says what happens before it names it (Feynman), in short active
+sentences that keep every hedge (STE), with no openers, closers or filler
+(humanizer). Ask it to explain or elaborate and you get the long form; the
+next reply is points again.
 
 ## Answers from the code, not from a guess
 
@@ -96,31 +102,28 @@ and asks you to trust it once with `/hooks`. If either file already existed,
 
 ## The loop
 
-`TDD: yes` — the test comes first, and the agent watches it fail:
+Ask for work and the agent first asks: **"Create a goal for this?"** Say no
+and it just does the work. Say yes and it runs the loop:
 
 ```
-grill -> plan -> task -> subtask -> test -> build -> manifest -> commit
+goal -> understand -> grill -> plan -> task -> subtask -> test -> build -> manifest -> review -> commit
 ```
 
-`TDD: no` — the test comes after, and is still not optional:
+With `TDD: no`, `test` comes after `build`. Every other stage is the same.
 
-```
-grill -> plan -> task -> subtask -> build -> test -> manifest -> commit
-```
+1. **goal**: your words, plus the observable result that means it is met.
+2. **understand**: the agent reads the code the goal touches, and cites what it finds.
+3. **grill**: it asks about every open decision and every unknown. Any wrapper, helper or new abstraction is put to you, and you decide.
+4. **plan, task, subtask**: a goal can have several plans (phases), each with its own tasks.
+5. **build**: one line before each task (`▶ Working on`), two after (`✓ Done` and `Noted`).
+6. **review**: each Done when is checked against the result, with evidence. It ends with "Is this the result you wanted?"
+7. **commit**: drafted only after your yes, the **green signal**. You run it.
 
-Cycle two, in a new session, cannot edit code:
-
-```
-brief -> findings -> close
-```
-
-Same stages either way; the order *is* the difference. `commit` and `close`
-are yours, not the agent's.
-
-Every stage is a **git command that shows the truth** and a **file written
-from what it showed** — `git diff` for the manifest, `git show <sha>` for the
-review. git reports, the agent decides, and the decision lands where `git
-log` will still have it. `.agents/leo.md` is the only description of it.
+Want to change the plan mid-way? Say so at any stage. The agent stops,
+shows where every task stands, changes the plan with you, and logs the
+change (`replan`). It never guesses: when it does not know, it stops and
+asks. Everything lives in `.agents/goals/G1/`, and `.agents/leo.md` defines
+each stage.
 
 The stage carrying the weight is **manifest**: one row per hunk, each naming
 the task it serves, why it exists, and what breaks if it is deleted. It goes
@@ -186,5 +189,5 @@ instruction exactly one runtime can follow. They are one file here, named for
 the trigger, so any runtime can read it. The interview method is his,
 unchanged.
 
-`tdd`, `caveman`, `feynman`, `evidence` and `points` are leo's own. `feynman` quotes Feynman only
+`tdd`, `feynman`, `evidence`, `points` and `replan` are leo's own. `feynman` quotes Feynman only
 where the source is verified, and names the quotes commonly misattributed to him.

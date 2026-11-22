@@ -42,11 +42,11 @@ for f in AGENTS.md \
          .agents/skills/grill-me/SKILL.md \
          .agents/skills/tdd/SKILL.md \
          .agents/skills/ponytail/SKILL.md \
-         .agents/skills/caveman/SKILL.md \
          .agents/skills/humanizer/SKILL.md \
          .agents/skills/feynman/SKILL.md \
          .agents/skills/evidence/SKILL.md \
          .agents/skills/points/SKILL.md \
+         .agents/skills/replan/SKILL.md \
          .agents/skills/asd-ste100/SKILL.md \
          .agents/skills/asd-ste100/references/writing-rules.md \
          .agents/skills/asd-ste100/examples/before-after.md \
@@ -55,11 +55,11 @@ for f in AGENTS.md \
          .claude/skills/grill-me/SKILL.md \
          .claude/skills/tdd/SKILL.md \
          .claude/skills/ponytail/SKILL.md \
-         .claude/skills/caveman/SKILL.md \
          .claude/skills/humanizer/SKILL.md \
          .claude/skills/feynman/SKILL.md \
          .claude/skills/evidence/SKILL.md \
          .claude/skills/points/SKILL.md \
+         .claude/skills/replan/SKILL.md \
          .claude/skills/asd-ste100/SKILL.md \
          .claude/skills/asd-ste100/scripts/ste-lint.py; do
   [ -f "$f" ] && ok "init writes $f" || bad "init did not write $f"
@@ -69,7 +69,8 @@ done
 # the template" and no template is a dangling instruction -- the exact
 # failure the pointer check below exists for, arriving through the copier
 # instead of through the prose.
-for f in .agents/templates/plan.md \
+for f in .agents/templates/goal.md \
+         .agents/templates/plan.md \
          .agents/templates/task.md \
          .agents/templates/manifest.md \
          .agents/templates/review.md \
@@ -80,7 +81,7 @@ done
 # The templates are instructions; the files they produce are work. Shipping
 # a filled-in .agents/plan.md would be shipping half a change, and the
 # pointer check below asserts the same thing from the other side.
-for f in .agents/plan.md .agents/manifest.md; do
+for f in .agents/goals .agents/plan.md; do
   [ -e "$f" ] && bad "init pre-made $f — that is the agent's to write" \
                || ok "init does not pre-make $f"
 done
@@ -129,7 +130,7 @@ printf '\nevery path the documents name actually exists\n'
 #
 # An earlier version of this test did not distinguish them and failed on
 # .agents/plan.md, which is correct behaviour being reported as a bug.
-products='.agents/plan.md .agents/manifest.md .agents/tasks .agents/reviews'
+products='.agents/goals'
 
 is_product() {
   for q in $products; do
@@ -167,14 +168,14 @@ printf '\nthe documents agree with each other\n'
 # The stages, in one place. AGENTS.md names them in order; leo.md defines
 # them. If AGENTS.md lists a stage leo.md never explains, the agent is told
 # to do something with no instruction behind it.
-for stage in grill plan task subtask build manifest commit brief findings close; do
+for stage in goal understand grill plan task subtask build manifest review commit replan; do
   grep -qi "$stage" "$R/.agents/leo.md" \
     && ok "leo.md defines the $stage stage" \
     || bad "AGENTS.md names $stage and leo.md never explains it"
 done
 
 # The mode table and the skills that exist have to be the same set.
-for skill in grill-me tdd ponytail caveman humanizer feynman evidence points asd-ste100; do
+for skill in grill-me tdd ponytail humanizer feynman evidence points asd-ste100 replan; do
   grep -qi "$skill" "$R/AGENTS.md" \
     && ok "AGENTS.md maps $skill to modes" \
     || bad "$skill ships but AGENTS.md never says when to use it"
@@ -218,7 +219,7 @@ grep -qE 'once.*first time you would have used it' "$R/AGENTS.md" \
 # Every template the documents tell the agent to copy must be a file the
 # copier ships. This is the same dangling-pointer failure as a missing skill,
 # one indirection further along.
-for t in plan task manifest review; do
+for t in goal plan task manifest review; do
   grep -q "templates/$t.md" "$R/.agents/leo.md" \
     && ok "leo.md points at the $t template" \
     || bad "leo.md never tells the agent where to get the $t template"
@@ -272,13 +273,102 @@ printf '%s' "$orders" | grep -qE "^\| *use a skill or tool silently *\|" \
 # evidence and points are not per-mode: they are in force on every reply, in
 # every mode. The table ROW of each, with ON in all five mode columns -- a
 # loose grep for the name would pass with one mode quietly set to OFF.
-for skill in evidence points asd-ste100; do
+for skill in evidence points; do
   modes=$(awk '/^\| mode \|/{f=1;next} f&&/^\|---/{next} f&&/^\| \*\*/{print} f&&!/^\|/{exit}' "$R/AGENTS.md")
   col=$(awk '/^\| mode \|/{n=split($0,h,"|"); for(i=1;i<=n;i++){gsub(/ /,"",h[i]); if(h[i]=="'"$skill"'") print i}; exit}' "$R/AGENTS.md")
   offs=$(printf '%s\n' "$modes" | awk -F'|' -v c="$col" '{v=$c; gsub(/[ *]/,"",v); if (v!="ON") print}')
   [ -n "$col" ] && [ -z "$offs" ] && [ "$(printf '%s\n' "$modes" | grep -c .)" = 5 ] \
     && ok "$skill is ON in every mode" || bad "$skill is not ON in every mode"
 done
+
+# One reply style, not four. caveman said what points already says, so it
+# is gone; a removed skill that still ships is one an agent can still load.
+[ -e "$R/.agents/skills/caveman" ] || [ -e "$R/.claude/skills/caveman" ] \
+  && bad "caveman still ships after it was folded into points" \
+  || ok "caveman is not shipped"
+grep -qi 'caveman' "$R/AGENTS.md" \
+  && bad "AGENTS.md still names caveman" || ok "AGENTS.md no longer names caveman"
+
+# points is the one style, built from three skills, two lines a point.
+pts="$R/.agents/skills/points/SKILL.md"
+for src in feynman humanizer asd-ste100; do
+  grep -q "skills/$src/SKILL.md" "$pts" \
+    && ok "points takes from $src" || bad "points does not say what it takes from $src"
+done
+grep -qiE 'at most two lines' "$pts" \
+  && ok "points caps a point at two lines" || bad "points has no two-line cap"
+
+# Contradictions found in review. Each was a sentence the file then broke.
+grep -q 'There is no third state' "$R/AGENTS.md" \
+  && bad "AGENTS.md says there is no third state, then lists one" \
+  || ok "AGENTS.md does not deny the on-request state it uses"
+grep -qi 'one word for one thing' "$R/AGENTS.md" "$pts" \
+  && bad "the STE line keeps a rule the STE skill drops for prose" \
+  || ok "no line asks for the STE rule its own skill drops for prose"
+grep -qE '`:1`' "$R/.agents/skills/evidence/SKILL.md" \
+  && bad "evidence suggests :1, a citation that always passes" \
+  || ok "evidence does not suggest a ritual :1 citation"
+
+# feynman in full is long form, and long form is only on request. ON in a
+# mode would make every reply in it long and points would never apply.
+fcol=$(awk '/^\| mode \|/{n=split($0,h,"|"); for(i=1;i<=n;i++){gsub(/ /,"",h[i]); if(h[i]=="feynman") print i}; exit}' "$R/AGENTS.md")
+fvals=$(awk -F'|' -v c="$fcol" '/^\| \*\*(coding|debugging|learning|review|exploration)\*\* \|/{v=$c; gsub(/^ +| +$/,"",v); print v}' "$R/AGENTS.md" | sort -u)
+[ -n "$fcol" ] && [ "$fvals" = "on request" ] \
+  && ok "feynman in full is on request in every mode" || bad "feynman is not on request in every mode: $fvals"
+
+# The header lists what is not the default. Listing the always-on skills on
+# every reply says nothing the developer does not already know.
+grep -q 'State which skills are in force' "$R/AGENTS.md" \
+  && bad "every reply still lists every skill in force" \
+  || ok "the header names only what is not the default"
+
+# The goal loop. Each rule below was asked for by the developer, and each is
+# guarded by the structure that carries it, not by a word that happens to
+# appear somewhere in the file.
+L="$R/.agents/leo.md"
+grep -qE '^#+ .*Create a goal' "$R/AGENTS.md" \
+  && ok "AGENTS.md has a section that asks whether to create a goal" \
+  || bad "nothing asks the developer whether to create a goal"
+grep -q 'Create a goal for this?' "$R/AGENTS.md" \
+  && ok "the goal question is written out word for word" || bad "the goal question is not written out"
+grep -qi 'green signal' "$L" \
+  && ok "leo.md waits for the developer's green signal before the commit message" \
+  || bad "leo.md drafts the commit message without a green signal"
+grep -qiE '^#+ .*cycle two' "$L" "$R/AGENTS.md" \
+  && bad "cycle two is still a section, after the review replaced it" \
+  || ok "cycle two is gone; the review before commit replaced it"
+grep -q '▶ Working on' "$R/AGENTS.md" && grep -q '✓ Done' "$R/AGENTS.md" \
+  && ok "AGENTS.md defines the start line and the done lines" \
+  || bad "AGENTS.md has no progress line format"
+grep -q 'Noted:' "$R/AGENTS.md" \
+  && ok "the done lines carry an observed note" || bad "the done lines have no observed note"
+for row in 'guess' 'add a wrapper, helper or abstraction'; do
+  printf '%s' "$orders" | grep -qE "^\| *$row" \
+    && ok "standing orders forbid: $row" || bad "standing orders have no row: $row"
+done
+# No AI attribution in a commit message. The developer does not want it, so
+# the template must not ask for one and a standing order must forbid it.
+tmpl=$(awk '/Draft the message/{f=1} f&&/^```$/{n++; if(n==2) exit} f' "$L")
+[ -n "$tmpl" ] && printf '%s' "$tmpl" | grep -qiE 'Assisted-by|Co-Authored-By|Generated with' \
+  && bad "leo.md's commit template still asks for an AI attribution line" \
+  || ok "leo.md's commit template has no AI attribution line"
+printf '%s' "$orders" | grep -qE '^\| *add an AI attribution' \
+  && ok "standing orders forbid AI attribution in commit messages" \
+  || bad "nothing forbids Co-Authored-By or similar in commit messages"
+
+# A plan change is grilled before it is made: a changed plan is new
+# decisions, and a decision nobody grilled is one the agent guessed. The
+# step, by its heading in the skill, and the method it points at.
+rp="$R/.agents/skills/replan/SKILL.md"
+grep -qE '^[0-9]+\. \*\*Grill the change' "$rp" && grep -q 'skills/grill-me/SKILL.md' "$rp" \
+  && ok "replan grills the change before editing the plan" || bad "replan edits the plan without a grill"
+grep -qi 'grill' <(grep '^| \*\*replan\*\*' "$R/AGENTS.md") \
+  && ok "the replan rule in AGENTS.md says it grills" || bad "AGENTS.md's replan rule skips the grill"
+grep -q '## Change log' "$R/.agents/templates/plan.md" \
+  && ok "the plan template records changes made mid-way" || bad "a replan leaves no record in the plan"
+grep -q 'Done when' "$R/.agents/templates/review.md" && grep -qi 'green signal' "$R/.agents/templates/review.md" \
+  && ok "the review template checks each Done-when and ends at the green signal" \
+  || bad "the review template does not check the goal"
 
 # And the per-reply framing: the rules have to be in force on every request,
 # not read once at the start of a session. That distinction is the whole
@@ -395,6 +485,24 @@ printf 'a\nb\n' > "$E/pkg/sub/mod.py"; printf 'x\n' > "$TMP/sib/lib/z.py"
 printf '%s' "$reason" | grep -q "$E" \
   && ok "a missing file is reported with the directory it was looked for from" \
   || bad "a missing-file block does not say where it looked"
+
+# Quotes. A citation followed by a quoted snippet is checked against the
+# lines it names: an existing line with the wrong code on it is still a
+# made-up citation.
+[ "$(verdict "$(payload 'Defined at `src/app.js:2` `two`.')")" = PASS ] \
+  && ok "a quote that is on the cited line passes" || bad "a correct quote was blocked"
+[ "$(verdict "$(payload 'Defined at `src/app.js:2` `retry(3)`.')")" = BLOCK ] \
+  && ok "a quote that is not on the cited line is sent back" || bad "a wrong quote passed"
+
+# Giving up must be visible. A reply let through after two blocks looks the
+# same as one that passed, unless the hook says so to the developer.
+for i in 1 2; do verdict "$(payload 'bad `src/net.js:1`' giveup)" >/dev/null; done
+gave=$(printf '%s' "$(payload 'bad `src/net.js:1`' giveup)" | node "$HOOK" 2>/dev/null)
+printf '%s' "$gave" | grep -q '"systemMessage"' && ! printf '%s' "$gave" | grep -q '"block"' \
+  && ok "when the hook gives up it warns the developer" || bad "the hook gives up silently"
+act=$(printf '%s' "$(payload 'bad `src/net.js:1`' s 1)" | node "$HOOK" 2>/dev/null)
+printf '%s' "$act" | grep -q '"systemMessage"' \
+  && ok "a retry let through by stop_hook_active still warns" || bad "stop_hook_active lets bad citations through silently"
 
 for f in .claude/settings.json .codex/hooks.json; do
   grep -q 'check-evidence.js' "$R/$f" 2>/dev/null \

@@ -9,9 +9,9 @@ fall out of it. "It works" is not a condition; "POST /x returns 429 after 10
 requests in 60s" is.>
 
 ## Grill
-<!-- What the grill settled: the questions asked and the answers given.
-     Empty means it was never grilled, and a task built on an ungrilled
-     assumption is a task built on whatever the agent guessed. -->
+<!-- Only for a decision this task raised that the goal's grill did not
+     settle: the question and the answer. Empty is fine when the goal's grill
+     covered it. -->
 
 ## To-do
 - [ ] <step>
