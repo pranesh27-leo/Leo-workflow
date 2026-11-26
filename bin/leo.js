@@ -7,10 +7,10 @@
 // that is gone, and what replaced it is the markdown it used to generate.
 // The reasoning is in README.md.
 //
-// So the only thing left to solve is distribution: getting eleven files into
+// So the only thing left to solve is distribution: getting the files into
 // somebody's repository on Windows, macOS and Linux identically. `npx
-// leo-workflow init` does that and is then never needed again. Nothing here
-// runs during your work, nothing watches, nothing checks.
+// leo-workflow init` does that and is then never needed again. Nothing in
+// this file runs during your work; the hooks it copies are what run.
 //
 // Node, because npm is the one installer present on every machine that has
 // an agent on it, and npm generates its own .cmd and .ps1 shims from this
@@ -63,14 +63,19 @@ const DOCS = ['CONTEXT.md', 'ARCHITECTURE.md', 'RULES.md'];
 // pre-made .agents/goals/G1/ would be shipping half a change.
 const TEMPLATES = ['goal.md', 'plan.md', 'task.md', 'manifest.md', 'review.md'];
 
-// The one thing that runs. The evidence skill is advice; this is the gate
-// behind it: Claude Code and Codex both call the script when a reply is about
-// to finish, and it sends back a reply whose citations are not real. Each
-// runtime reads its hooks from its own path, so each gets a registration.
-// An existing settings file is kept like every other file, and init says so
-// -- merging into somebody's settings is not a copier's job.
+// The things that run. The skills are advice; these are the gates behind
+// the rules that have no exceptions, run by the agent's runtime whatever the
+// model decides: guard.js before a tool call (no commit, no install, no
+// secret), trace.js after one (what really ran), and at the end of a reply
+// check-evidence.js (citations are real) and budget.js (one reply stays
+// readable). Each runtime reads its hooks from its own path, so each gets a
+// registration. An existing settings file is kept like every other file,
+// and init says so -- merging into somebody's settings is not a copier's job.
 const HOOKS = [
   [path.join('hooks', 'check-evidence.js'), path.join('.agents', 'hooks', 'check-evidence.js')],
+  [path.join('hooks', 'guard.js'), path.join('.agents', 'hooks', 'guard.js')],
+  [path.join('hooks', 'trace.js'), path.join('.agents', 'hooks', 'trace.js')],
+  [path.join('hooks', 'budget.js'), path.join('.agents', 'hooks', 'budget.js')],
   [path.join('hooks', 'claude-settings.json'), path.join('.claude', 'settings.json')],
   [path.join('hooks', 'codex-hooks.json'), path.join('.codex', 'hooks.json')],
 ];
@@ -104,6 +109,10 @@ function plan() {
       out.push([rel, path.join('.claude', 'skills', s, f)]);
     }
   }
+  // The reviewer that never saw the work. Claude Code reads subagents from
+  // .claude/agents/; the .agents/ copy is the canonical one, like the skills.
+  out.push([path.join('agents', 'leo-reviewer.md'), path.join('.agents', 'agents', 'leo-reviewer.md')]);
+  out.push([path.join('agents', 'leo-reviewer.md'), path.join('.claude', 'agents', 'leo-reviewer.md')]);
   for (const h of HOOKS) out.push(h);
   return out;
 }
@@ -152,16 +161,18 @@ function main(argv) {
     process.stderr.write('     leo init --force overwrites the kept ones\n');
   }
   for (const h of keptHooks) {
-    process.stderr.write('     ' + h + ' was kept: add the Stop hook from .agents/hooks/ to it by hand\n');
+    process.stderr.write('     ' + h + ' was kept: add the hooks from .agents/hooks/ to it by hand\n');
   }
   process.stderr.write(
     '\n  1. open AGENTS.md and fill in the session block at the top:\n' +
-    '     the mode, and whether this is TDD work\n' +
+    '     the mode, whether this is TDD work, and how many lines\n' +
+    '     you can read in one reply\n' +
     '  2. point your agent at AGENTS.md\n' +
     '  3. the stages are in .agents/leo.md — that is the whole workflow\n' +
     '  4. Codex: run /hooks once to trust .codex/hooks.json\n' +
-    '\n  leo is not needed again. The one thing that runs is the evidence\n' +
-    '  hook, called by your agent at the end of each reply.\n');
+    '\n  leo is not needed again. What runs are the hooks in .agents/hooks/,\n' +
+    '  called by your agent: the guard before a tool call, the trace after\n' +
+    '  one, and the evidence and budget checks at the end of each reply.\n');
   return 0;
 }
 

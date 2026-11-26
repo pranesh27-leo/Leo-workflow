@@ -11,6 +11,7 @@
 //
 //   1. every cited path:line names a file that exists, at a line inside it
 //   2. a reply that names a file in this repository cites at least one line
+//   3. a claim marked verified quotes its line, and the quote is on it
 //
 // It cannot check that a claim is TRUE. It checks that the evidence the
 // claim points at is real, which is what a fabricated explanation lacks.
@@ -36,6 +37,7 @@ const EXT = 'js|mjs|cjs|ts|tsx|jsx|py|rb|go|rs|java|kt|kts|swift|c|h|cc|cpp|hpp|
 const PATH = '((?:[A-Za-z]:[\\\\/]|~[\\\\/]|[\\\\/])?(?:[\\w.-]+[\\\\/])*[\\w.-]+\\.(?:' + EXT + '))';
 const EDGE = '(?<![\\w:@.\\\\/-])';
 const CITE = new RegExp(EDGE + PATH + ':(\\d+)(?:-(\\d+))?\\b', 'g');
+const CITE_ONE = new RegExp(EDGE + PATH + ':\\d+');
 const NAMED = new RegExp(EDGE + PATH + '(?![\\w:])', 'g');
 
 // Directories never worth searching for a cited file.
@@ -141,9 +143,23 @@ function check(msg, cwd) {
     const n = lines.length;
     const hi = Math.max(+a, b ? +b : 0);
     if (+a < 1 || hi > n) { problems.push(ref + ': ' + p + ' has ' + n + ' lines'); continue; }
-    const q = QUOTE.exec(text.slice(m.index + ref.length));
+    const after = text.slice(m.index + ref.length);
+    const q = QUOTE.exec(after);
     if (q && !quoteFound(lines, +a, b ? +b : 0, q[1])) {
       problems.push(ref + ': the quoted `' + q[1] + '` is not on those lines');
+    }
+    // A real line is not yet a relevant line: `src/app.js:2` exists whatever
+    // claim it is put beside. "verified" means the lines show it, so a
+    // verified claim quotes them, and the check above then proves the quote
+    // is really there. The claim is the text up to the next citation or the
+    // end of the line, and for the first citation on a line, the text before
+    // it too: "verified: retries 3 times `src/net.js:12`".
+    const start = text.lastIndexOf('\n', m.index) + 1;
+    const before = text.slice(start, m.index);
+    const claim = after.split('\n')[0].split(CITE_ONE)[0] + (CITE_ONE.test(before) ? '' : ' ' + before);
+    if (!q && /\bverified\b/i.test(claim)) {
+      problems.push(ref + ': marked verified but quotes nothing. Quote the line that shows it: ' +
+        p + ':' + a + ' `<the code on that line>`');
     }
   }
 

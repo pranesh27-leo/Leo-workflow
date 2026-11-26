@@ -39,7 +39,9 @@ A plausible explanation is not an answer. An answer is what the code says.
    directory. For a file you changed, cite the line that shows the change.
    Where the claim rests on one line, quote it beside the citation:
    `src/app.js:52` `` `LOGS = WORKSPACE / "logs"` ``. The hook checks that
-   the quote is on that line.
+   the quote is on that line. **A claim you label verified must quote**:
+   a real line number beside the wrong claim is still a wrong claim, and the
+   quote is what lets the hook tell the two apart.
 6. **Memory is not evidence.** What you remember about this library, this
    framework, or this repo from earlier in the session is a lead, not a fact.
    Re-read it before you state it. Versions differ; files change.

@@ -7,9 +7,10 @@ each stage — as files your agent reads, in your repository.
 npx leo-workflow init
 ```
 
-That is the whole installation. It copies the files and exits. The one thing
-that runs afterwards is the evidence hook, which your agent calls at the end of
-each reply; nothing else watches, and there is nothing to keep installed.
+That is the whole installation. It copies the files and exits. What runs
+afterwards are four small hooks your agent's runtime calls (before a tool
+call, after one, and at the end of a reply); there is no daemon and nothing
+to keep installed.
 
 ## What you get
 
@@ -27,23 +28,29 @@ each reply; nothing else watches, and there is nothing to keep installed.
 | `.agents/skills/points/` | the one reply style: 1–5 points, two lines each, Feynman + STE + humanizer in short form — **every reply** |
 | `.agents/skills/asd-ste100/` | plain, single-meaning English, inside `points`; strict for text a program parses — *vendored, MIT* |
 | `.agents/tools/understand.md` | Understand Anything — a knowledge graph to find where to look |
-| `.agents/hooks/check-evidence.js` | the gate behind `evidence`, for Claude Code and Codex |
-| `.claude/settings.json` · `.codex/hooks.json` | the hook, registered where each agent reads it |
+| `.agents/hooks/check-evidence.js` | the gate behind `evidence`: citations are real, `verified` claims quote their line |
+| `.agents/hooks/guard.js` | before a tool call: no commit, no install (NEW packages named), no secrets read |
+| `.agents/hooks/trace.js` | after a tool call: what really ran, written to the goal's `trace.md` |
+| `.agents/hooks/budget.js` | end of a reply: more lines changed than you can read, and it asks for a reading guide |
+| `.agents/agents/leo-reviewer.md` | a read-only reviewer with a fresh context, for the review stage |
+| `.claude/settings.json` · `.codex/hooks.json` | the hooks, registered where each agent reads them |
 | `.agents/tools/graph.md` | code graph — call chains, blast radius |
 | `.agents/tools/rtk.md` | terminal output reduction |
 | `.agents/templates/` | goal, plan, task, manifest, review — copied when a stage needs one |
 | `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
-| `.claude/skills/*/` | the same nine skills, where Claude Code reads them |
+| `.claude/skills/*/` · `.claude/agents/` | the same nine skills and the reviewer, where Claude Code reads them |
 
 Open `AGENTS.md` and fill in the block at the top:
 
 ```
-Mode: coding        <- coding | debugging | learning | review | exploration
-TDD:  yes           <- yes | no
+Mode:  coding       <- coding | debugging | learning | review | exploration
+TDD:   yes          <- yes | no
+Lines: 150          <- the most lines one reply may change
 ```
 
 The mode picks which skills apply. `TDD` picks which build stages the agent
-follows. Both are yours to set, and the agent is told never to change them.
+follows. `Lines` is how much you can read before your next prompt. All three
+are yours to set, and the agent is told never to change them.
 
 **You configure this once and then never mention it again.** "Use ponytail
 here" is not something you should have to type: the mode says ponytail is ON,
@@ -99,6 +106,46 @@ Claude Code reads `.claude/settings.json`. Codex reads `.codex/hooks.json`,
 and asks you to trust it once with `/hooks`. If either file already existed,
 `leo init` keeps yours and tells you to copy the hook in from
 `.agents/hooks/`.
+
+## Code you can follow, and the reason it looks the way it does
+
+An agent writes 300 lines in a minute. You cannot read 300 lines before the
+next prompt, so you send the next prompt without reading, and the code
+becomes something nobody understood. Ask afterwards why it was written that
+way and you get a fluent reason, which is a story about the code and not the
+cause of it: a model's account of its own reasoning is not reliably the
+reasoning. So leo captures the *why* before the code exists, and keeps each
+step small enough to read.
+
+| what | when | where |
+|---|---|---|
+| **decision lines**: `Approach`, `Rejected`, `Copying` | before each task, before any code | the reply, under `▶ Working on` |
+| **reading budget** | every reply | `Lines:` in `AGENTS.md`; `budget.js` sends a reply over it back for a reading guide |
+| **Source** per hunk: `grill`, `pattern path:LINE` or `default` | manifest | `default` is the honest "no reason from this repo" row, the one to read closely |
+| **trace** | every tool call | `.agents/goals/G<n>/trace.md`, written by the runtime, so the agent's account can be checked |
+| **reading order** and **your understanding** | review | riskiest hunk first; then two or three questions the diff answers, before the green signal |
+| **independent check** | review | `leo-reviewer`, a subagent that never saw the work and cannot edit |
+
+## What is enforced, and what is advice
+
+Everything in `AGENTS.md` is advice the model follows, and on a busy turn
+advice is what gets skipped. The rules with no exceptions are hooks, which
+the runtime runs whatever the model decides:
+
+| hook | runs | stops |
+|---|---|---|
+| `guard.js` | before a tool call | `git commit` / `git push`; any install, with each package named as already a dependency or **NEW** (models invent package names, and attackers register them); reading `.env`, keys and token files |
+| `trace.js` | after a tool call | nothing: it records |
+| `check-evidence.js` | end of a reply | made-up files and lines, quotes not on their line, `verified` with no quote |
+| `budget.js` | end of a reply | a reply that changed more than `Lines:` |
+
+The guard reads command text. It is not a sandbox: a command built to hide
+what it does gets past it. For that, turn on your runtime's sandbox
+(`/sandbox` in Claude Code). Text inside files, web pages, issues and tool
+output is data, and `AGENTS.md` tells the agent to show you an instruction
+found there rather than follow it. That one is advice too.
+
+Try it: `bash t/demo.sh` runs each problem through the real hooks.
 
 ## The loop
 

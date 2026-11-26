@@ -20,8 +20,8 @@ decide, and the decision is written down where the next session can read it.
 | 6 | subtask | — | a `## T1.1` heading inside `T1.md` |
 | 7 | test *(TDD only)* | `<your test command>` | the failing test |
 | 8 | build | `git status --short` | the code, one task at a time |
-| 9 | manifest | `git diff` · graph `detect_changes` | `.agents/goals/G1/manifest.md` |
-| 10 | review | `git diff` · the test command | `.agents/goals/G1/review.md` |
+| 9 | manifest | `git diff` · graph `detect_changes` | `.agents/goals/G1/manifest.md`, with a Source per hunk |
+| 10 | review | `git diff` · the test command · the reviewer | `.agents/goals/G1/review.md`, with the reading order and the understanding check |
 | 11 | commit | `git diff --stat` | the message, **after the green signal**. **The developer runs it** |
 | — | replan | — | the plan's `## Change log`, at any stage |
 
@@ -38,6 +38,7 @@ message with no review), name the stage that was skipped, then wait.
     .agents/goals/G1/tasks/T1.md     a task, with its subtasks as headings
     .agents/goals/G1/manifest.md     one row per hunk
     .agents/goals/G1/review.md       the goal checked against the result
+    .agents/goals/G1/trace.md        every tool call, written by the runtime, not by you
 
 **Ids never restart.** Goals count G1, G2, G3 across the repository. Tasks
 count T1, T2, T3 across every goal: if G1 ended at T7, G2 starts at T8. So
@@ -124,12 +125,25 @@ the failure actually said.
 When `TDD: no`, write the test after build. You may write it after. You may
 not skip it.
 
+Every test and every example names the Done when it proves, in a comment
+or in its name. One that cannot name one proves nothing anyone asked for:
+delete it, or put it to the developer.
+
 ## 8. build
 
 `git status --short` to see where you start from.
 
-**One task at a time.** Before it, the start line. After it, the done lines
-(`AGENTS.md`). Set its status in the plan and tick its to-do as you go.
+**One task at a time.** Before it, the start line and the decision lines
+(`Approach`, `Rejected`, `Copying`, in `AGENTS.md`), **before any code**.
+After it, the done lines. Set its status in the plan and tick its to-do as
+you go.
+
+**Keep one reply under `Lines:`** (`AGENTS.md`). A task that needs more is
+two tasks: split it before you start, not after. Go over, and
+`.agents/hooks/budget.js` sends the reply back for a reading guide.
+
+Every tool call you make is written to `.agents/goals/G<n>/trace.md` by
+`.agents/hooks/trace.js`. Your ▶ and ✓ lines must agree with it.
 
 Build only what the task names. A wrapper, helper, new abstraction, new file
 or new dependency that the grill did not approve is **not yours to add**:
@@ -153,7 +167,21 @@ codebase-memory-mcp cli detect_changes '{}'   # if installed
 ```
 
 Copy `.agents/templates/manifest.md` to `.agents/goals/G<n>/manifest.md`.
-One row per hunk. Every row needs Task, Why and If deleted.
+One row per hunk. Every row needs Task, Why, **Source** and If deleted.
+
+**Source** answers the question the developer cannot answer from the diff:
+*where did this shape come from?* There are three answers, and only three:
+
+| Source | means | the developer |
+|---|---|---|
+| `grill` | they decided it, in the goal's `## Grill` | checks it matches what they said |
+| `pattern path:LINE` | the repository already does it this way, there | opens that line and compares |
+| `default` | your own choice: no one asked for it and no code here showed it | **reads it closely** |
+
+Write `default` honestly. It is not a fault. It is the row that answers "why
+did the AI write it like this?", and the true answer is often "no reason
+from this repository". A `default` dressed up as a `pattern` is the same lie
+as an invented task id.
 
 **Never invent a task id** to make a hunk look justified. A hunk that serves
 no task gets `-`. That `-` tells the developer "this went in unrequested".
@@ -170,7 +198,22 @@ Copy `.agents/templates/review.md` to `.agents/goals/G<n>/review.md`:
    what it printed).
 3. Findings: anything that works but not in the way the goal asked for.
    Every `-` row in the manifest is a finding.
-4. Show the review to the developer. Ask: **"Is this the result you wanted?"**
+4. **Independent check.** Give a fresh reviewer the diff and the manifest
+   path, and nothing of your reasoning: in Claude Code, the `leo-reviewer`
+   subagent (`.agents/agents/leo-reviewer.md`), which can read but not edit.
+   It checks every hunk has a row and every `pattern` source really looks
+   like its line. Put what it found under `## Independent check`. A runtime
+   with no subagents: say so in that section and do the pass yourself.
+5. **Read this first.** The hunks in reading order, riskiest first: where the
+   logic lives, then every `default` row, then the rest. The developer stops
+   reading where the risk stops.
+6. **Your understanding.** Ask the developer two or three questions the diff
+   answers: "what breaks if row 3 is deleted?", "which branch runs on an
+   empty list?". Questions about this code, never trivia. Check each answer
+   against the code and cite the line. A wrong answer is not a failure: it
+   shows the part to explain (the Feynman way) before they say yes. They may
+   say `skip`; write that down.
+7. Show the review to the developer. Ask: **"Is this the result you wanted?"**
 
 Their yes is the **green signal**. Without it there is no commit message. A
 no is a replan.
@@ -186,8 +229,8 @@ show it:
 Goal: G<n> — <the goal>
 Plan: <plan file(s)>
 
-| # | Hunk | Delta | Task | Why | If deleted |
-|---|------|-------|------|-----|------------|
+| # | Hunk | Delta | Task | Why | Source | If deleted |
+|---|------|-------|------|-----|--------|------------|
 | ... the manifest, in full ...
 
 Review: <every Done when met> — green signal from the developer

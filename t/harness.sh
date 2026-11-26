@@ -509,6 +509,114 @@ for f in .claude/settings.json .codex/hooks.json; do
     && ok "$f registers the evidence hook on Stop" || bad "$f does not register the hook"
 done
 
+# Verified means the lines show it, so a verified claim quotes them. A real
+# line number beside the wrong claim passed every check above.
+[ "$(verdict "$(payload 'Reads the config at `src/app.js:2` — verified')")" = BLOCK ] \
+  && ok "a verified claim with no quote is sent back" || bad "a verified claim passed with nothing quoted"
+[ "$(verdict "$(payload 'verified: it reads the config `src/app.js:2`')")" = BLOCK ] \
+  && ok "the label before the citation counts too" || bad "verified before the citation was not seen"
+[ "$(verdict "$(payload 'Reads the config at `src/app.js:2` `two` — verified')")" = PASS ] \
+  && ok "a verified claim with its real quote passes" || bad "a verified, correctly quoted claim was blocked"
+[ "$(verdict "$(payload '`src/app.js:1` `one` verified, see also `src/app.js:3`')")" = PASS ] \
+  && ok "the label belongs to its own citation, not the next one" || bad "one verified label was charged to the next citation"
+[ "$(verdict "$(payload 'It may read the config at `src/app.js:2` (inferred)')")" = PASS ] \
+  && ok "an inferred claim needs no quote" || bad "an inferred claim was asked for a quote"
+
+for f in .agents/hooks/guard.js .agents/hooks/trace.js .agents/hooks/budget.js \
+         .agents/agents/leo-reviewer.md .claude/agents/leo-reviewer.md; do
+  [ -f "$R/$f" ] && ok "init writes $f" || bad "init did not write $f"
+done
+for f in .claude/settings.json .codex/hooks.json; do
+  node -e '
+    const h = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).hooks;
+    const has = (ev, s) => (h[ev] || []).some((g) => g.hooks.some((x) => JSON.stringify(x).includes(s)));
+    process.exit(has("PreToolUse", "guard.js") && has("PostToolUse", "trace.js") && has("Stop", "budget.js") ? 0 : 1);
+  ' "$R/$f" && ok "$f registers guard, trace and budget on their events" || bad "$f is missing a hook registration"
+done
+
+# =========================================================================
+printf '\nthe guard\n'
+# =========================================================================
+# The standing orders with no exceptions, enforced before the tool runs.
+GUARD="$R/.agents/hooks/guard.js"
+G="$TMP/gd"; mkdir -p "$G/.git"
+printf '{"dependencies":{"express":"^4"}}' > "$G/package.json"
+printf 'requests==2.31\n' > "$G/requirements.txt"
+why=""; v=""
+pre() {  # tool, tool_input json -> $v is DENY or ALLOW, $why the guard's output
+  why=$(node -e 'process.stdout.write(JSON.stringify({hook_event_name:"PreToolUse",cwd:process.argv[1],tool_name:process.argv[2],tool_input:JSON.parse(process.argv[3])}))' "$G" "$1" "$2" | node "$GUARD" 2>/dev/null)
+  case "$why" in *'"deny"'*) v=DENY ;; *) v=ALLOW ;; esac
+}
+pre Bash '{"command":"npm install expresss-validator-pro"}'; [ "$v" = DENY ] && printf '%s' "$why" | grep -q 'NEW' \
+  && ok "an install of a package in no manifest is denied and named NEW" || bad "a made-up package name got through"
+pre Bash '{"command":"npm i express@4"}'; printf '%s' "$why" | grep -q 'already a dependency' \
+  && ok "an install of a declared package says it is already a dependency" || bad "a declared package was called new"
+pre Bash '{"command":"pip install requets==2.0"}'; printf '%s' "$why" | grep -q 'requets: NEW' \
+  && ok "a pinned pip name is read as a name, not as an assignment" || bad "pip name==version was not checked"
+pre Bash '{"command":"pip install Requests"}'; printf '%s' "$why" | grep -q 'already a dependency (requirements.txt)' \
+  && ok "pip names match the manifest whatever their case" || bad "pip name case broke the manifest match"
+pre Bash '{"command":"npx some-cli init"}'; [ "$v" = DENY ] \
+  && ok "npx of an undeclared package counts as an install" || bad "npx downloaded and ran an unknown package"
+pre Bash '{"command":"git add -A && git -C . commit -m \"a && b\""}'; [ "$v" = DENY ] \
+  && ok "git commit is denied, inside a chain and past -C" || bad "a commit got past the guard"
+pre Bash '{"command":"git push origin dev"}'; [ "$v" = DENY ] \
+  && ok "git push is denied" || bad "a push got past the guard"
+pre Bash '{"command":"echo \"git commit\" > notes.txt"}'; [ "$v" = ALLOW ] \
+  && ok "the words git commit inside a string are not a commit" || bad "a quoted string was taken for a commit"
+pre Bash '{"command":"cat .env | grep KEY"}'; [ "$v" = DENY ] \
+  && ok "printing .env is denied" || bad "cat .env got through"
+pre Read '{"file_path":"/x/.env.production"}'; [ "$v" = DENY ] \
+  && ok "reading .env.production is denied" || bad "Read of an env file got through"
+pre Read '{"file_path":"/x/deploy/key.pem"}'; [ "$v" = DENY ] \
+  && ok "reading a key file is denied" || bad "Read of a .pem got through"
+pre Read '{"file_path":"/x/.env.example"}'; [ "$v" = ALLOW ] \
+  && ok "a .env.example template is readable" || bad "a template was treated as a secret"
+pre Bash '{"command":"cp .env.example .env && npm test 2>&1"}'; [ "$v" = ALLOW ] \
+  && ok "setting up .env from its template, then testing, is allowed" || bad "ordinary setup was denied"
+pre Bash '{"command":"npm test"}'; [ "$v" = ALLOW ] \
+  && ok "an ordinary command passes" || bad "npm test was denied"
+[ "$(printf 'not json' | node "$GUARD" >/dev/null 2>&1; echo $?)" = 0 ] \
+  && ok "the guard exits 0 on input it cannot read" || bad "the guard crashes on bad input"
+
+# =========================================================================
+printf '\nthe trace and the reading budget\n'
+# =========================================================================
+TRACE="$R/.agents/hooks/trace.js"; BUDGET="$R/.agents/hooks/budget.js"
+T="$TMP/tr"; mkdir -p "$T/.git" "$T/.agents" "$T/src"
+printf 'Lines: 20\n' > "$T/AGENTS.md"
+sess="t$RANDOM"
+post() { node -e 'process.stdout.write(JSON.stringify({hook_event_name:"PostToolUse",cwd:process.argv[1],session_id:process.argv[2],tool_name:process.argv[3],tool_input:JSON.parse(process.argv[4]),tool_response:{type:"create"}}))' "$T" "$sess" "$1" "$2" | node "$TRACE"; }
+stop() { node -e 'process.stdout.write(JSON.stringify({hook_event_name:"Stop",cwd:process.argv[1],session_id:process.argv[2]}))' "$T" "$sess" | node "$BUDGET"; }
+
+post Read "{\"file_path\":\"$T/src/a.js\"}"
+post Edit "{\"file_path\":\"$T/src/a.js\",\"old_string\":\"x\",\"new_string\":\"x\\ny\\nz\"}"
+grep -q '| 1 |.*| Read | `src/a.js`' "$T/.agents/trace.md" && grep -q '| 2 |.*| Edit | `src/a.js` | +3 −1 |' "$T/.agents/trace.md" \
+  && ok "the trace records each call in order, with the lines an edit changed" || bad "the trace is missing or wrong: $(cat "$T/.agents/trace.md" 2>/dev/null)"
+[ -z "$(stop)" ] && ok "a reply under Lines: passes" || bad "a small reply was sent back"
+
+mkdir -p "$T/.agents/goals/G2" "$T/.agents/goals/G10"
+post Write "{\"file_path\":\"$T/src/big.js\",\"content\":\"$(printf 'l\\n%.0s' $(seq 30))\"}"
+grep -q 'big.js' "$T/.agents/goals/G10/trace.md" 2>/dev/null \
+  && ok "with goals open, the trace goes to the highest one (G10, not G2)" || bad "the trace went to the wrong goal"
+out=$(stop)
+printf '%s' "$out" | grep -q '"block"' && printf '%s' "$out" | grep -q 'reading guide' \
+  && ok "a reply over Lines: is sent back for a reading guide" || bad "a 30-line reply passed a 20-line budget"
+[ -z "$(stop)" ] && ok "the budget blocks once per reply, so it cannot loop" || bad "the budget blocked twice in a row"
+[ "$(printf 'not json' | node "$TRACE" >/dev/null 2>&1; echo $?)" = 0 ] \
+  && ok "the trace exits 0 on input it cannot read" || bad "the trace crashes on bad input"
+
+# The documents carry what the hooks assume.
+grep -qE '^ +Lines: +[0-9]+' "$R/AGENTS.md" \
+  && ok "AGENTS.md's session block sets Lines:" || bad "budget.js reads a Lines: that AGENTS.md never sets"
+grep -q 'Approach:' "$R/AGENTS.md" && grep -q 'Rejected:' "$R/AGENTS.md" && grep -q 'Copying:' "$R/AGENTS.md" \
+  && ok "AGENTS.md asks for the decision before the code" || bad "AGENTS.md has no decision lines"
+grep -q '| Source |' "$R/.agents/templates/manifest.md" && grep -q '| Source |' "$R/.agents/leo.md" \
+  && ok "the manifest and the commit template carry a Source column" || bad "Source is missing from the manifest or the commit template"
+grep -q '## Your understanding' "$R/.agents/templates/review.md" && grep -q '## Read this first' "$R/.agents/templates/review.md" \
+  && ok "the review asks the developer before the green signal, and gives a reading order" || bad "the review has no understanding check"
+grep -q 'leo-reviewer' "$R/.agents/leo.md" \
+  && ok "the review stage uses the fresh reviewer" || bad "leo.md never calls the reviewer"
+
 # =========================================================================
 printf '\nwhat npm would ship\n'
 # =========================================================================
