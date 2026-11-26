@@ -1,2 +1,2 @@
-.leo/plan.md
-.leo/manifest.md
+node_modules/
+*.tgz

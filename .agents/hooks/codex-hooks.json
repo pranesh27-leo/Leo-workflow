@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agents/hooks/guard.js",
+            "timeout": 10,
+            "statusMessage": "Checking the command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agents/hooks/trace.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agents/hooks/check-evidence.js",
+            "timeout": 30,
+            "statusMessage": "Checking the evidence"
+          },
+          {
+            "type": "command",
+            "command": "node .agents/hooks/budget.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

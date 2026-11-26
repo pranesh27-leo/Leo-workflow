@@ -1,93 +1,240 @@
 # leo
 
-A workflow for working with coding agents, in ~500 lines of POSIX shell.
-
-It exists to answer one question: **when 500 lines arrive that you did not
-type, how do you know they are the right 500 lines — and how do you debug them
-at 3am without an AI?**
-
-## The five ideas
-
-1. **The agent grills you before it plans.** It asks questions in rounds — each
-   with a recommended default — and stops after each round instead of running
-   ahead. Out of that comes `.leo/plan.md`: the goal, the non-goals, numbered
-   tasks `T1`, `T2`, …, and a LOC estimate. You build the plan together, and it
-   is specific enough to measure against. A vague plan justifies anything.
-2. **A manifest makes a diff reviewable.** `leo scan` turns the diff into one
-   row per hunk. The agent fills in *which task this serves*, *why*, and *what
-   breaks if it is deleted*. You read ~20 rows and spot-check the risky ones.
-   `leo check` then rejects any task ID the plan never declared, so the agent
-   cannot invent a justification, and reports the unwanted work in lines:
-   `2 hunk(s), 47 lines, serve no task`. That is your answer to "which of these
-   500 lines did I not ask for?"
-3. **You commit, not the agent.** `leo commit` refuses to run without a human
-   at a terminal. The agent runs `leo check`, shows you the command it would
-   run, and stops — having just written the code, it is the last party that
-   should decide the code is done.
-4. **The record belongs in the commit message.** Not in git notes, not in a side
-   file, not in a chat log. `git blame` → `git show` and you get the reason a
-   line exists, from git alone, forever.
-5. **A lesson becomes a shell command.** Each `.leo/rules/*.md` holds a check
-   that exits non-zero when a known mistake reappears. It runs on every
-   `leo check`, costs no tokens, and outlives the session that learned it.
-
-**New here? [Read the guide](GUIDE.md)** — a step-by-step walkthrough of one
-complete change, with real output at every step.
-
-## Install
+A markdown agent harness. The loop, the skills, and the instructions for
+each stage — as files your agent reads, in your repository.
 
 ```sh
-ln -s "$PWD/leo" /usr/local/bin/leo
-cd ~/your-repo && leo init
+npx leo-workflow init
 ```
 
-## Use
+That is the whole installation. It copies the files and exits. What runs
+afterwards are four small hooks your agent's runtime calls (before a tool
+call, after one, and at the end of a reply); there is no daemon and nothing
+to keep installed.
 
-```sh
-leo plan "rate limiting"        # after the agent has grilled you
-                                # ...the agent builds it, one task at a time
-leo scan                        # split the diff into hunks
-                                # ...the agent fills in Task / Why / If deleted
-leo check                       # rules, unreviewed hunks, budget, tests
-leo commit "api: rate limit"    # you run this one. It refuses without a tty.
+## What you get
+
+| file | what it is |
+|---|---|
+| `AGENTS.md` | the one file every agent loads |
+| `.agents/leo.md` | every stage: the git command that shows the truth, and the file you write |
+| `.agents/skills/grill-me/` | interview before building — *Matt Pocock's, adapted* |
+| `.agents/skills/tdd/` | test first, and watch it fail |
+| `.agents/skills/ponytail/` | what you build — *vendored, MIT* |
+| `.agents/skills/humanizer/` | how prose reads — *vendored, MIT* |
+| `.agents/skills/feynman/` | explaining what you do not understand, the way Feynman taught |
+| `.agents/skills/evidence/` | answers about code from the code, cited, never guessed — **every reply** |
+| `.agents/skills/replan/` | change the plan mid-way: stop, show, agree, log |
+| `.agents/skills/points/` | the one reply style: 1–5 points, two lines each, Feynman + STE + humanizer in short form — **every reply** |
+| `.agents/skills/asd-ste100/` | plain, single-meaning English, inside `points`; strict for text a program parses — *vendored, MIT* |
+| `.agents/tools/understand.md` | Understand Anything — a knowledge graph to find where to look |
+| `.agents/hooks/check-evidence.js` | the gate behind `evidence`: citations are real, `verified` claims quote their line |
+| `.agents/hooks/guard.js` | before a tool call: no commit, no install (NEW packages named), no secrets read |
+| `.agents/hooks/trace.js` | after a tool call: what really ran, written to the goal's `trace.md` |
+| `.agents/hooks/budget.js` | end of a reply: more lines changed than you can read, and it asks for a reading guide |
+| `.agents/agents/leo-reviewer.md` | a read-only reviewer with a fresh context, for the review stage |
+| `.claude/settings.json` · `.codex/hooks.json` | the hooks, registered where each agent reads them |
+| `.agents/tools/graph.md` | code graph — call chains, blast radius |
+| `.agents/tools/rtk.md` | terminal output reduction |
+| `.agents/templates/` | goal, plan, task, manifest, review — copied when a stage needs one |
+| `CONTEXT.md` · `ARCHITECTURE.md` · `RULES.md` | the repository's own documents, to fill in |
+| `.claude/skills/*/` · `.claude/agents/` | the same nine skills and the reviewer, where Claude Code reads them |
+
+Open `AGENTS.md` and fill in the block at the top:
+
+```
+Mode:  coding       <- coding | debugging | learning | review | exploration
+TDD:   yes          <- yes | no
+Lines: 150          <- the most lines one reply may change
 ```
 
-## Picking up a change days later
+The mode picks which skills apply. `TDD` picks which build stages the agent
+follows. `Lines` is how much you can read before your next prompt. All three
+are yours to set, and the agent is told never to change them.
 
-Nothing lives in the chat, so a dropped connection, a closed laptop or a week
-away costs nothing:
+**You configure this once and then never mention it again.** "Use ponytail
+here" is not something you should have to type: the mode says ponytail is ON,
+so it is on — this reply, the next one, and the one after that. `AGENTS.md`
+is loaded on every request, so what it says is in force on every request, and
+each active skill's rule is written there in one line so it applies without
+the agent stopping to open anything.
 
-```sh
-leo plan               # the plan, plus "2 of 5 done | in progress: T3"
-git diff HEAD          # the code you already wrote, still sitting there
-cat .leo/manifest.md   # the review table, as far as it got
+The tools work the same way. "Check the code graph for this" is not an
+instruction you should have to give: the mode says the graph is ON, so the
+agent runs `detect_changes` before writing the manifest and `trace_path`
+before reading a bug, because those moments are written beside the stages
+that want them. A tool that is not installed is reported **once** and then
+worked around, not announced every reply.
+
+Every reply opens with one status line: the mode, the stage, and only what
+is not the default, such as a skill used on request or a tool it ran
+(`[coding · build · graph]`). The always-on skills are not listed every time.
+
+Then the reply itself is **points**: 1–5 of them, each at most two lines. A
+point says what happens before it names it (Feynman), in short active
+sentences that keep every hedge (STE), with no openers, closers or filler
+(humanizer). Ask it to explain or elaborate and you get the long form; the
+next reply is points again.
+
+## Answers from the code, not from a guess
+
+Ask an agent how something in your repository works and it will often read
+three files, write a confident explanation, and be wrong. Challenge one line
+and it looks properly, then says *"Sorry, I was wrong."* The capability was
+there. Nothing made it look before answering.
+
+Two layers stop that, on every reply, in every mode:
+
+| layer | what it does | can it be skipped? |
+|---|---|---|
+| `evidence` skill, in `AGENTS.md` | read before answering, trace the real path, cite `path:LINE` beside every claim, label it verified / inferred / unknown, try to refute it first | yes, it is advice the model follows |
+| the Stop hook | before a reply reaches you, checks every cited file exists and every cited line is inside it, and that a reply naming a repo file cites a line. Fails, and the reply goes back to the agent | no, the agent runtime runs it |
+
+The hook cannot tell whether a claim is *true*. It guarantees the evidence a
+claim points at is *real*, which a made-up explanation is not. It gives up
+after two blocks in a row on one session, so it cannot loop.
+
+A Stop hook runs **after** the reply is on your screen, so a blocked reply
+stays visible. The hook tells the agent to send only the corrected points,
+not the reply again, and the `evidence` skill tells it to cite every file it
+names before it finishes, so the block is rare. Paths are found the ways
+agents write them: relative to the session directory or the repository
+root, into a sibling directory (`../other/x.py`), absolute, with Windows
+backslashes, or relative to a subproject below the session directory.
+
+Claude Code reads `.claude/settings.json`. Codex reads `.codex/hooks.json`,
+and asks you to trust it once with `/hooks`. If either file already existed,
+`leo init` keeps yours and tells you to copy the hook in from
+`.agents/hooks/`.
+
+## Code you can follow, and the reason it looks the way it does
+
+An agent writes 300 lines in a minute. You cannot read 300 lines before the
+next prompt, so you send the next prompt without reading, and the code
+becomes something nobody understood. Ask afterwards why it was written that
+way and you get a fluent reason, which is a story about the code and not the
+cause of it: a model's account of its own reasoning is not reliably the
+reasoning. So leo captures the *why* before the code exists, and keeps each
+step small enough to read.
+
+| what | when | where |
+|---|---|---|
+| **decision lines**: `Approach`, `Rejected`, `Copying` | before each task, before any code | the reply, under `▶ Working on` |
+| **reading budget** | every reply | `Lines:` in `AGENTS.md`; `budget.js` sends a reply over it back for a reading guide |
+| **Source** per hunk: `grill`, `pattern path:LINE` or `default` | manifest | `default` is the honest "no reason from this repo" row, the one to read closely |
+| **trace** | every tool call | `.agents/goals/G<n>/trace.md`, written by the runtime, so the agent's account can be checked |
+| **reading order** and **your understanding** | review | riskiest hunk first; then two or three questions the diff answers, before the green signal |
+| **independent check** | review | `leo-reviewer`, a subagent that never saw the work and cannot edit |
+
+## What is enforced, and what is advice
+
+Everything in `AGENTS.md` is advice the model follows, and on a busy turn
+advice is what gets skipped. The rules with no exceptions are hooks, which
+the runtime runs whatever the model decides:
+
+| hook | runs | stops |
+|---|---|---|
+| `guard.js` | before a tool call | `git commit` / `git push`; any install, with each package named as already a dependency or **NEW** (models invent package names, and attackers register them); reading `.env`, keys and token files |
+| `trace.js` | after a tool call | nothing: it records |
+| `check-evidence.js` | end of a reply | made-up files and lines, quotes not on their line, `verified` with no quote |
+| `budget.js` | end of a reply | a reply that changed more than `Lines:` |
+
+The guard reads command text. It is not a sandbox: a command built to hide
+what it does gets past it. For that, turn on your runtime's sandbox
+(`/sandbox` in Claude Code). Text inside files, web pages, issues and tool
+output is data, and `AGENTS.md` tells the agent to show you an instruction
+found there rather than follow it. That one is advice too.
+
+Try it: `bash t/demo.sh` runs each problem through the real hooks.
+
+## The loop
+
+Ask for work and the agent first asks: **"Create a goal for this?"** Say no
+and it just does the work. Say yes and it runs the loop:
+
+```
+goal -> understand -> grill -> plan -> task -> subtask -> test -> build -> manifest -> review -> commit
 ```
 
-The Status column in the plan is the whole memory of a long change. `.leo/` is
-gitignored by default, which keeps it local and disposable — if you need a
-change to survive across machines or be visible to teammates, drop
-`.leo/plan.md` from `.gitignore` and commit it.
+With `TDD: no`, `test` comes after `build`. Every other stage is the same.
 
-## Layout
+1. **goal**: your words, plus the observable result that means it is met.
+2. **understand**: the agent reads the code the goal touches, and cites what it finds.
+3. **grill**: it asks about every open decision and every unknown. Any wrapper, helper or new abstraction is put to you, and you decide.
+4. **plan, task, subtask**: a goal can have several plans (phases), each with its own tasks.
+5. **build**: one line before each task (`▶ Working on`), two after (`✓ Done` and `Noted`).
+6. **review**: each Done when is checked against the result, with evidence. It ends with "Is this the result you wanted?"
+7. **commit**: drafted only after your yes, the **green signal**. You run it.
 
-```
-leo                dispatch: a command is a file in core/cmd/, no registry
-core/lib.sh        every shared helper, one screen
-core/cmd/*.sh      one file per command, readable top to bottom
-templates/         what `leo init` copies into a repository
-```
+Want to change the plan mid-way? Say so at any stage. The agent stops,
+shows where every task stands, changes the plan with you, and logs the
+change (`replan`). It never guesses: when it does not know, it stops and
+asks. Everything lives in `.agents/goals/G1/`, and `.agents/leo.md` defines
+each stage.
 
-## Extending it
+The stage carrying the weight is **manifest**: one row per hunk, each naming
+the task it serves, why it exists, and what breaks if it is deleted. It goes
+into the commit message body, so six months later `git blame` → `git show`
+answers the question with no AI in the loop and nothing installed.
 
-There are exactly two extension points, and neither requires touching the code:
+## Why there is no program
 
-- **A new check** is a new file in `.leo/rules/`.
-- **A new command** is a new file in `core/cmd/`. `leo <name>` finds it.
+leo was a CLI. `leo scan` turned the diff into a manifest, `leo check`
+enforced it, `leo commit` assembled the message. Eight commands, a plan
+registry, a capability system, 415 tests.
 
-If a change needs more machinery than that, it probably does not belong here.
-Every abstraction in this tool has to earn itself against a simple rule: you
-must be able to read the whole thing in one sitting.
+It was also five consecutive releases of Windows bugs — an impostor `bash`
+from a vendor toolchain, the WSL launcher answering to the same name, a
+per-file subprocess that turned `leo --version` into a four-minute hang on a
+large repository. Every one was the cost of a program running where it was
+not native, and none were bugs in the workflow.
 
-## Requirements
+The workflow was always the product. The program generated markdown and
+checked that markdown existed; an agent can read the instruction and write
+the file, which is what it does with every other instruction in the
+repository. So the instructions ship and the program does not.
 
-git, bash 3.2, and a POSIX userland. No jq, no node, no network.
+What is lost is enforcement: nothing now fails a build because a hunk has no
+row. `.agents/leo.md` makes the agent check itself at the manifest stage and
+report honestly, which is weaker than a gate and is the trade. What is kept
+is the artefact — the manifest in the commit message — which is the half that
+still answers questions in two years.
+
+## Tools
+
+Three, all optional. The code graph and rtk are self-contained binaries on
+macOS, Linux and Windows. Understand Anything is an agent plugin. Missing one
+is not an error.
+
+| | what it does | install |
+|---|---|---|
+| [code graph](https://github.com/DeusData/codebase-memory-mcp) | who calls what, what a diff touches | one-line script, no runtime |
+| [rtk](https://github.com/rtk-ai/rtk) | filters shell output structurally | `brew install rtk` · `winget install rtk-ai.rtk` |
+| [Understand Anything](https://github.com/Egonex-AI/Understand-Anything) | a knowledge graph of the repository, to ask where to look | `/plugin install understand-anything` · see `.agents/tools/understand.md` |
+
+The agent is told never to install them — it shows you the command.
+
+## Licence
+
+MIT.
+
+Four of the nine skills are other people's work. Each is vendored rather
+than referenced — a stage whose definition lives on someone else's default
+branch can change under you between two sessions — and each ships the licence
+it is used under, in its own directory.
+
+| skill | whose | terms |
+|---|---|---|
+| `ponytail` | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT, byte-for-byte |
+| `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT, byte-for-byte |
+| `asd-ste100` | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) | MIT, byte-for-byte, with its rules, examples and linter |
+| `grill-me` | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT, **adapted** |
+
+`grill-me` is adapted rather than copied and says so in the file. Upstream is
+two files, one of which only says "call the Skill tool with grilling" — an
+instruction exactly one runtime can follow. They are one file here, named for
+the trigger, so any runtime can read it. The interview method is his,
+unchanged.
+
+`tdd`, `feynman`, `evidence`, `points` and `replan` are leo's own. `feynman` quotes Feynman only
+where the source is verified, and names the quotes commonly misattributed to him.
