@@ -522,7 +522,7 @@ done
 [ "$(verdict "$(payload 'It may read the config at `src/app.js:2` (inferred)')")" = PASS ] \
   && ok "an inferred claim needs no quote" || bad "an inferred claim was asked for a quote"
 
-for f in .agents/hooks/guard.js .agents/hooks/trace.js .agents/hooks/budget.js \
+for f in .agents/hooks/trace.js .agents/hooks/budget.js \
          .agents/agents/leo-reviewer.md .claude/agents/leo-reviewer.md; do
   [ -f "$R/$f" ] && ok "init writes $f" || bad "init did not write $f"
 done
@@ -530,53 +530,25 @@ for f in .claude/settings.json .codex/hooks.json; do
   node -e '
     const h = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).hooks;
     const has = (ev, s) => (h[ev] || []).some((g) => g.hooks.some((x) => JSON.stringify(x).includes(s)));
-    process.exit(has("PreToolUse", "guard.js") && has("PostToolUse", "trace.js") && has("Stop", "budget.js") ? 0 : 1);
-  ' "$R/$f" && ok "$f registers guard, trace and budget on their events" || bad "$f is missing a hook registration"
+    process.exit(!h.PreToolUse && has("PostToolUse", "trace.js") && has("Stop", "budget.js") ? 0 : 1);
+  ' "$R/$f" && ok "$f registers trace and budget, and no PreToolUse guard" || bad "$f is missing a hook, or still registers a guard"
 done
 
 # =========================================================================
-printf '\nthe guard\n'
+printf '\nno commit, install or secret, by agreement\n'
 # =========================================================================
-# The standing orders with no exceptions, enforced before the tool runs.
-GUARD="$R/.agents/hooks/guard.js"
-G="$TMP/gd"; mkdir -p "$G/.git"
-printf '{"dependencies":{"express":"^4"}}' > "$G/package.json"
-printf 'requests==2.31\n' > "$G/requirements.txt"
-why=""; v=""
-pre() {  # tool, tool_input json -> $v is DENY or ALLOW, $why the guard's output
-  why=$(node -e 'process.stdout.write(JSON.stringify({hook_event_name:"PreToolUse",cwd:process.argv[1],tool_name:process.argv[2],tool_input:JSON.parse(process.argv[3])}))' "$G" "$1" "$2" | node "$GUARD" 2>/dev/null)
-  case "$why" in *'"deny"'*) v=DENY ;; *) v=ALLOW ;; esac
-}
-pre Bash '{"command":"npm install expresss-validator-pro"}'; [ "$v" = DENY ] && printf '%s' "$why" | grep -q 'NEW' \
-  && ok "an install of a package in no manifest is denied and named NEW" || bad "a made-up package name got through"
-pre Bash '{"command":"npm i express@4"}'; printf '%s' "$why" | grep -q 'already a dependency' \
-  && ok "an install of a declared package says it is already a dependency" || bad "a declared package was called new"
-pre Bash '{"command":"pip install requets==2.0"}'; printf '%s' "$why" | grep -q 'requets: NEW' \
-  && ok "a pinned pip name is read as a name, not as an assignment" || bad "pip name==version was not checked"
-pre Bash '{"command":"pip install Requests"}'; printf '%s' "$why" | grep -q 'already a dependency (requirements.txt)' \
-  && ok "pip names match the manifest whatever their case" || bad "pip name case broke the manifest match"
-pre Bash '{"command":"npx some-cli init"}'; [ "$v" = DENY ] \
-  && ok "npx of an undeclared package counts as an install" || bad "npx downloaded and ran an unknown package"
-pre Bash '{"command":"git add -A && git -C . commit -m \"a && b\""}'; [ "$v" = DENY ] \
-  && ok "git commit is denied, inside a chain and past -C" || bad "a commit got past the guard"
-pre Bash '{"command":"git push origin dev"}'; [ "$v" = DENY ] \
-  && ok "git push is denied" || bad "a push got past the guard"
-pre Bash '{"command":"echo \"git commit\" > notes.txt"}'; [ "$v" = ALLOW ] \
-  && ok "the words git commit inside a string are not a commit" || bad "a quoted string was taken for a commit"
-pre Bash '{"command":"cat .env | grep KEY"}'; [ "$v" = DENY ] \
-  && ok "printing .env is denied" || bad "cat .env got through"
-pre Read '{"file_path":"/x/.env.production"}'; [ "$v" = DENY ] \
-  && ok "reading .env.production is denied" || bad "Read of an env file got through"
-pre Read '{"file_path":"/x/deploy/key.pem"}'; [ "$v" = DENY ] \
-  && ok "reading a key file is denied" || bad "Read of a .pem got through"
-pre Read '{"file_path":"/x/.env.example"}'; [ "$v" = ALLOW ] \
-  && ok "a .env.example template is readable" || bad "a template was treated as a secret"
-pre Bash '{"command":"cp .env.example .env && npm test 2>&1"}'; [ "$v" = ALLOW ] \
-  && ok "setting up .env from its template, then testing, is allowed" || bad "ordinary setup was denied"
-pre Bash '{"command":"npm test"}'; [ "$v" = ALLOW ] \
-  && ok "an ordinary command passes" || bad "npm test was denied"
-[ "$(printf 'not json' | node "$GUARD" >/dev/null 2>&1; echo $?)" = 0 ] \
-  && ok "the guard exits 0 on input it cannot read" || bad "the guard crashes on bad input"
+# These three were a PreToolUse guard in 1.9.0. A hook cannot tell a request
+# from an accident, and the developer sometimes wants the agent to commit,
+# install or read a value. So they are standing orders: advice, which the
+# developer can lift for one request by saying so.
+[ -e "$R/.agents/hooks/guard.js" ] && bad "guard.js still ships" || ok "guard.js is not shipped"
+for row in 'commit' 'install' 'read a secret'; do
+  printf '%s' "$orders" | grep -E "^\| *$row" | grep -q 'unless the developer' \
+    && ok "standing orders keep '$row', and the developer can lift it" \
+    || bad "standing order '$row' is missing, or cannot be lifted"
+done
+grep -qi 'guard' "$R/AGENTS.md" \
+  && bad "AGENTS.md still describes a guard" || ok "AGENTS.md no longer describes a guard"
 
 # =========================================================================
 printf '\nthe trace and the reading budget\n'

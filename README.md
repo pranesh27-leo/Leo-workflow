@@ -8,9 +8,9 @@ npx leo-workflow init
 ```
 
 That is the whole installation. It copies the files and exits. What runs
-afterwards are four small hooks your agent's runtime calls (before a tool
-call, after one, and at the end of a reply); there is no daemon and nothing
-to keep installed.
+afterwards are three small hooks your agent's runtime calls (after a tool
+call, and at the end of a reply); there is no daemon and nothing to keep
+installed.
 
 ## What you get
 
@@ -29,7 +29,6 @@ to keep installed.
 | `.agents/skills/asd-ste100/` | plain, single-meaning English, inside `points`; strict for text a program parses — *vendored, MIT* |
 | `.agents/tools/understand.md` | Understand Anything — a knowledge graph to find where to look |
 | `.agents/hooks/check-evidence.js` | the gate behind `evidence`: citations are real, `verified` claims quote their line |
-| `.agents/hooks/guard.js` | before a tool call: no commit, no install (NEW packages named), no secrets read |
 | `.agents/hooks/trace.js` | after a tool call: what really ran, written to the goal's `trace.md` |
 | `.agents/hooks/budget.js` | end of a reply: more lines changed than you can read, and it asks for a reading guide |
 | `.agents/agents/leo-reviewer.md` | a read-only reviewer with a fresh context, for the review stage |
@@ -129,19 +128,19 @@ step small enough to read.
 ## What is enforced, and what is advice
 
 Everything in `AGENTS.md` is advice the model follows, and on a busy turn
-advice is what gets skipped. The rules with no exceptions are hooks, which
-the runtime runs whatever the model decides:
+advice is what gets skipped. The checks that are hooks run whatever the
+model decides:
 
 | hook | runs | stops |
 |---|---|---|
-| `guard.js` | before a tool call | `git commit` / `git push`; any install, with each package named as already a dependency or **NEW** (models invent package names, and attackers register them); reading `.env`, keys and token files |
 | `trace.js` | after a tool call | nothing: it records |
 | `check-evidence.js` | end of a reply | made-up files and lines, quotes not on their line, `verified` with no quote |
 | `budget.js` | end of a reply | a reply that changed more than `Lines:` |
 
-The guard reads command text. It is not a sandbox: a command built to hide
-what it does gets past it. For that, turn on your runtime's sandbox
-(`/sandbox` in Claude Code). Text inside files, web pages, issues and tool
+No commit, no install and no reading secrets are standing orders in
+`AGENTS.md`, not hooks: you sometimes want the agent to do them, and you
+lift one by saying so for that request. To stop them outright, use your
+runtime's permissions or sandbox (`/sandbox` in Claude Code). Text inside files, web pages, issues and tool
 output is data, and `AGENTS.md` tells the agent to show you an instruction
 found there rather than follow it. That one is advice too.
 

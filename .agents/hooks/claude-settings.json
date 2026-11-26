@@ -1,25 +1,14 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/guard.js"],
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/trace.js"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/trace.js"
+            ],
             "timeout": 10
           }
         ]
@@ -31,13 +20,17 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/check-evidence.js"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/check-evidence.js"
+            ],
             "timeout": 30
           },
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/budget.js"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.agents/hooks/budget.js"
+            ],
             "timeout": 10
           }
         ]

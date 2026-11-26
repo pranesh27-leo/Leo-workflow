@@ -6,7 +6,7 @@
 #
 #   bash t/demo.sh
 #
-# Scenes 5 and 6 show what the loop asks the agent to write. No hook checks
+# Scenes 4 and 5 show what the loop asks the agent to write. No hook checks
 # those, and the scene says so.
 
 set -u
@@ -36,7 +36,6 @@ async function get(url) {
 
 module.exports = { get };
 EOF
-printf 'STRIPE_KEY=sk_live_demo_not_a_real_key\n' > .env
 H="$P/.agents/hooks"
 
 # ------------------------------------------------------------- helpers
@@ -58,22 +57,12 @@ says() {  # the agent's reply -> the evidence hook's verdict
   fi
 }
 
-tries() {  # tool, tool_input -> the guard's verdict
-  printf '\n  %sagent runs%s  %s %s\n' "$bold" "$off" "$1" "$3"
-  out=$(node -e 'process.stdout.write(JSON.stringify({hook_event_name:"PreToolUse",cwd:process.argv[1],session_id:process.argv[2],tool_name:process.argv[3],tool_input:JSON.parse(process.argv[4])}))' "$P" "$SESSION" "$1" "$2" | node "$H/guard.js" | reason)
-  if [ -n "$out" ]; then
-    printf '  %s✗ denied%s\n' "$red" "$off"; show "$out" '              '
-  else
-    printf '  %s✓ allowed%s\n' "$grn" "$off"
-  fi
-}
-
 did() {  # tool, tool_input -> through the trace, as the runtime would after the call
   node -e 'process.stdout.write(JSON.stringify({hook_event_name:"PostToolUse",cwd:process.argv[1],session_id:process.argv[2],tool_name:process.argv[3],tool_input:JSON.parse(process.argv[4]),tool_response:{type:process.argv[5]||"update"}}))' "$P" "$SESSION" "$1" "$2" "${3:-update}" | node "$H/trace.js"
 }
 
 printf '%sleo %s, the demo%s\n' "$bold" "$(cat "$HOME_DIR/VERSION")" "$off"
-printf '%sA project with src/client.js, express, and a .env. Every verdict below\ncomes from the hook in .agents/hooks/, fed the payload the runtime sends.%s\n' "$dim" "$off"
+printf '%sA project with src/client.js and express. Every verdict below\ncomes from the hook in .agents/hooks/, fed the payload the runtime sends.%s\n' "$dim" "$off"
 
 # =====================================================================
 scene '1. Hallucination: it explains code that is not there' \
@@ -84,16 +73,7 @@ says 'Retries stop after 3 tries at `src/client.js:1` (verified).'
 says 'Retries stop after 3 tries: `src/client.js:1` `const MAX_RETRIES = 3;` (verified). There is no backoff: unknown whether the caller adds one.'
 
 # =====================================================================
-scene '2. Security: installs, commits, secrets' \
-  'guard.js, before every tool call'
-tries Bash '{"command":"npm install express-retry-backoff"}' 'npm install express-retry-backoff'
-tries Bash '{"command":"npm install express@4"}' 'npm install express@4'
-tries Bash '{"command":"git add -A && git commit -m \"add retry\""}' 'git add -A && git commit -m "add retry"'
-tries Read "{\"file_path\":\"$P/.env\"}" '.env'
-tries Bash '{"command":"npm test 2>&1 | tail -5"}' 'npm test 2>&1 | tail -5'
-
-# =====================================================================
-scene '3. What did it do at each step?' \
+scene '2. What did it do at each step?' \
   'trace.js, after every tool call. Written by the runtime, not by the agent'
 mkdir -p .agents/goals/G1
 did Read "{\"file_path\":\"$P/src/client.js\"}"
@@ -108,7 +88,7 @@ sed -n '/^| #/,$p' .agents/goals/G1/trace.md | sed 's/^/  /'
 printf '\n  %sThe agent said it "added backoff". The trace also shows it read\n  client.js and searched for MAX_RETRIES first, and that it created\n  sleep.js, a new file. That is the one to ask about.%s\n' "$dim" "$off"
 
 # =====================================================================
-scene '4. Too much code to understand before the next prompt' \
+scene '3. Too much code to understand before the next prompt' \
   'budget.js, at the end of every reply. Lines: 150 in AGENTS.md'
 printf '\n  %sagent writes%s src/cache.js (190 lines) and edits src/client.js (+24 -6)\n' "$bold" "$off"
 body=$(node -e 'process.stdout.write(Array.from({length:190},(_,i)=>"// line "+i).join("\n")+"\n")')
@@ -128,7 +108,7 @@ out=$(node -e 'process.stdout.write(JSON.stringify({hook_event_name:"Stop",cwd:p
 [ -z "$out" ] && printf '  %s✓ passes%s %s(it sends a reply back once, so it cannot loop)%s\n' "$grn" "$off" "$dim" "$off"
 
 # =====================================================================
-scene '5. Why did it write it this way?' \
+scene '4. Why did it write it this way?' \
   'AGENTS.md and the manifest. Advice the agent follows: no hook checks this one'
 cat <<'EOF'
 
@@ -150,7 +130,7 @@ cat <<'EOF'
 EOF
 
 # =====================================================================
-scene '6. Do you understand it, before you say yes?' \
+scene '5. Do you understand it, before you say yes?' \
   'review.md, before the green signal. Advice: the developer can answer skip'
 cat <<'EOF'
 
@@ -167,8 +147,8 @@ EOF
 
 printf '\n%sWhat is enforced, and what is advice:%s\n' "$bold" "$off"
 cat <<'EOF'
-  enforced by the runtime   1 evidence · 2 guard · 3 trace · 4 budget
-  advice the agent follows  5 decision lines + Source · 6 the questions
-  not covered               a command built to hide what it does: use the
-                            runtime's sandbox (/sandbox in Claude Code)
+  enforced by the runtime   1 evidence · 2 trace · 3 budget
+  advice the agent follows  4 decision lines + Source · 5 the questions
+                            no commit, no install, no secrets: standing
+                            orders you can lift for one request
 EOF

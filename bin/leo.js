@@ -64,16 +64,14 @@ const DOCS = ['CONTEXT.md', 'ARCHITECTURE.md', 'RULES.md'];
 const TEMPLATES = ['goal.md', 'plan.md', 'task.md', 'manifest.md', 'review.md'];
 
 // The things that run. The skills are advice; these are the gates behind
-// the rules that have no exceptions, run by the agent's runtime whatever the
-// model decides: guard.js before a tool call (no commit, no install, no
-// secret), trace.js after one (what really ran), and at the end of a reply
+// the checks a program can make, run by the agent's runtime whatever the
+// model decides: trace.js after a tool call (what really ran), and at the end of a reply
 // check-evidence.js (citations are real) and budget.js (one reply stays
 // readable). Each runtime reads its hooks from its own path, so each gets a
 // registration. An existing settings file is kept like every other file,
 // and init says so -- merging into somebody's settings is not a copier's job.
 const HOOKS = [
   [path.join('hooks', 'check-evidence.js'), path.join('.agents', 'hooks', 'check-evidence.js')],
-  [path.join('hooks', 'guard.js'), path.join('.agents', 'hooks', 'guard.js')],
   [path.join('hooks', 'trace.js'), path.join('.agents', 'hooks', 'trace.js')],
   [path.join('hooks', 'budget.js'), path.join('.agents', 'hooks', 'budget.js')],
   [path.join('hooks', 'claude-settings.json'), path.join('.claude', 'settings.json')],
@@ -171,8 +169,8 @@ function main(argv) {
     '  3. the stages are in .agents/leo.md — that is the whole workflow\n' +
     '  4. Codex: run /hooks once to trust .codex/hooks.json\n' +
     '\n  leo is not needed again. What runs are the hooks in .agents/hooks/,\n' +
-    '  called by your agent: the guard before a tool call, the trace after\n' +
-    '  one, and the evidence and budget checks at the end of each reply.\n');
+    '  called by your agent: the trace after a tool call, and the evidence\n' +
+    '  and budget checks at the end of each reply.\n');
   return 0;
 }
 
